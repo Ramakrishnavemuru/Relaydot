@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Real-Time Chat App</title>
+  <link rel="stylesheet" href="css/global.css">
+  <link rel="stylesheet" href="css/auth.css">
+</head>
+<body class="auth-wrapper">
+  <div class="auth-container" style="text-align: center;">
+    <div class="auth-brand-logo">💬</div>
+    <h1 class="auth-title">Real-Time Chat</h1>
+    <p class="auth-subtitle" style="margin-bottom: 2rem;">Connecting you instantly to your conversations.</p>
+    <div style="display: flex; gap: 1rem; justify-content: center;">
+      <a href="login.html" class="btn btn-primary" style="flex: 1;">Login</a>
+      <a href="register.html" class="btn btn-secondary" style="flex: 1;">Register</a>
+    </div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script>
+    // Automatic route redirection if already authenticated
+    if (Auth.isAuthenticated()) {
+      window.location.href = 'chat.html';
+    }
+  </script>
+</body>
+</html>

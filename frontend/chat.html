@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Real-Time Chat App</title>
+  <link rel="stylesheet" href="css/global.css">
+  <link rel="stylesheet" href="css/chat.css">
+  <link rel="stylesheet" href="css/profile.css">
+  <link rel="stylesheet" href="css/responsive.css">
+</head>
+<body>
+  <div class="chat-app-container">
+    
+    <!-- Sidebar -->
+    <aside class="chat-sidebar">
+      <!-- User profile & App actions -->
+      <div class="sidebar-header">
+        <div class="user-profile-badge" id="btn-header-profile" title="View Profile">
+          <div class="avatar-wrap">
+            <img id="my-avatar" src="" alt="Profile" class="avatar-img" />
+            <span id="my-status-dot" class="online-dot online"></span>
+          </div>
+          <div class="user-meta">
+            <span id="my-name" class="user-display-name">Loading...</span>
+            <span class="user-status-label">Online</span>
+          </div>
+        </div>
+
+        <div class="sidebar-actions">
+          <button id="btn-new-chat" class="icon-btn" title="New Chat">💬</button>
+          <button id="btn-new-group" class="icon-btn" title="New Group">👥</button>
+          <button id="btn-settings" class="icon-btn" title="Settings">⚙️</button>
+          <button id="btn-logout" class="icon-btn" title="Sign Out">🚪</button>
+        </div>
+      </div>
+
+      <!-- Conversations Search -->
+      <div class="sidebar-search">
+        <div class="search-input-wrap">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="conv-search-input" class="form-input" placeholder="Search conversations..." />
+        </div>
+      </div>
+
+      <!-- Conversations List -->
+      <div id="conversations-list" class="conversations-list">
+        <!-- Rendered dynamically -->
+      </div>
+    </aside>
+
+    <!-- Main Chat Window Area -->
+    <main class="chat-window">
+      
+      <!-- Empty Chat State (No conversation selected) -->
+      <div id="empty-chat-state" class="empty-chat-state">
+        <div class="empty-state-icon">💬</div>
+        <h2 class="empty-state-title">Select a Conversation</h2>
+        <p class="empty-state-desc">Choose a chat from the sidebar or click the new chat button to connect with friends.</p>
+      </div>
+
+      <!-- Active Chat Window -->
+      <div id="active-chat-window" class="active-chat-window hidden">
+        
+        <!-- Chat Header -->
+        <header class="chat-header">
+          <div class="chat-header-info" id="btn-chat-info">
+            <button id="btn-mobile-back" class="icon-btn btn-mobile-back" title="Back to conversations">←</button>
+            <img id="chat-avatar" src="" alt="Avatar" class="chat-header-avatar" />
+            <div class="chat-header-meta">
+              <span id="chat-title" class="chat-title">Conversation Name</span>
+              <span id="chat-header-status" class="status-text">
+                <span id="chat-subtitle" class="chat-subtitle">Offline</span>
+              </span>
+            </div>
+          </div>
+
+          <div class="chat-header-actions">
+            <button id="btn-search-messages" class="icon-btn" title="Search in messages">🔍</button>
+          </div>
+        </header>
+
+        <!-- Message History Feed -->
+        <div id="messages-container" class="messages-container">
+          <div id="messages-list"></div>
+        </div>
+
+        <!-- Ephemeral Typing Indicator -->
+        <div id="typing-indicator" class="typing-indicator-bar hidden">
+          <div class="typing-dots">
+            <span class="typing-dot"></span>
+            <span class="typing-dot"></span>
+            <span class="typing-dot"></span>
+          </div>
+          <span id="typing-text">Someone is typing</span>
+        </div>
+
+        <!-- Chat Input Bar & Previews -->
+        <footer class="chat-input-wrapper">
+          <!-- Reply Preview Banner -->
+          <div id="reply-preview-bar" class="preview-banner hidden">
+            <div class="banner-content">
+              <span class="banner-author">Replying to <span id="reply-author">User</span></span>
+              <span id="reply-content" class="banner-text">Original message snippet</span>
+            </div>
+            <button id="btn-cancel-reply" class="icon-btn" style="width:24px; height:24px;">✕</button>
+          </div>
+
+          <!-- Edit Preview Banner -->
+          <div id="edit-preview-bar" class="preview-banner hidden">
+            <div class="banner-content">
+              <span class="banner-author">Editing Message</span>
+              <span id="edit-content" class="banner-text">Original text</span>
+            </div>
+            <button id="btn-cancel-edit" class="icon-btn" style="width:24px; height:24px;">✕</button>
+          </div>
+
+          <!-- Pending Attachment Preview Chips -->
+          <div id="attachment-preview-bar" class="attachment-preview-chips hidden">
+            <div id="attachment-previews" style="display: flex; gap: 0.5rem; flex-wrap: wrap;"></div>
+          </div>
+
+          <!-- Input Controls -->
+          <div class="chat-input-controls">
+            <!-- Hidden File Input -->
+            <input type="file" id="file-input" class="hidden" accept="image/*,.pdf,.doc,.docx,.txt,.zip" />
+            <button id="btn-attachment" class="icon-btn" title="Attach file or image">📎</button>
+
+            <!-- Emoji Picker Button & Popup -->
+            <button id="btn-emoji" class="icon-btn" title="Insert emoji">😀</button>
+            <div id="emoji-picker-popup" class="emoji-picker-container hidden">
+              <button class="emoji-btn">👍</button>
+              <button class="emoji-btn">❤️</button>
+              <button class="emoji-btn">😂</button>
+              <button class="emoji-btn">😮</button>
+              <button class="emoji-btn">😢</button>
+              <button class="emoji-btn">🔥</button>
+              <button class="emoji-btn">🎉</button>
+              <button class="emoji-btn">👋</button>
+              <button class="emoji-btn">🙌</button>
+              <button class="emoji-btn">🚀</button>
+              <button class="emoji-btn">✨</button>
+              <button class="emoji-btn">💯</button>
+            </div>
+
+            <!-- Message Textarea -->
+            <textarea 
+              id="message-input" 
+              class="message-textarea" 
+              placeholder="Type a message..." 
+              rows="1"
+            ></textarea>
+
+            <!-- Send Button -->
+            <button id="btn-send-message" class="btn-send" title="Send message">➤</button>
+          </div>
+        </footer>
+
+      </div>
+    </main>
+
+  </div>
+
+  <!-- MODAL: New Direct Chat -->
+  <div id="modal-new-chat" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">New Conversation</h3>
+        <button class="icon-btn modal-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="search-input-wrap" style="margin-bottom: 1rem;">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="search-users-input" class="form-input" placeholder="Search by username or email..." />
+        </div>
+        <div id="user-search-results" class="user-search-results" style="max-height: 320px; overflow-y: auto;">
+          <div class="empty-list-notice">Type to search users</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: New Group -->
+  <div id="modal-new-group" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">Create Group Chat</h3>
+        <button class="icon-btn modal-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Group Name</label>
+          <input type="text" id="new-group-name" class="form-input" placeholder="e.g. CSE 2027" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description (Optional)</label>
+          <input type="text" id="new-group-desc" class="form-input" placeholder="e.g. Batch Study & Project Group" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Select Initial Members</label>
+          <div id="group-member-checklist" class="member-checklist">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-modal-cancel">Cancel</button>
+        <button id="btn-create-group-submit" class="btn btn-primary">Create Group</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Search Messages -->
+  <div id="modal-search-messages" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">Search Messages</h3>
+        <button class="icon-btn modal-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="search-input-wrap" style="margin-bottom: 1rem;">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="search-query-input" class="form-input" placeholder="Search keywords in all chats..." />
+        </div>
+        <div id="search-messages-results" style="max-height: 320px; overflow-y: auto;">
+          <div class="empty-list-notice">Type a keyword to search</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Group / Conversation Info -->
+  <div id="modal-group-info" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">Conversation Details</h3>
+        <button class="icon-btn modal-close">✕</button>
+      </div>
+      <div class="modal-body" style="text-align: center;">
+        <img id="group-info-avatar" src="" class="avatar-preview-img" style="margin: 0 auto 0.75rem auto;" />
+        <h4 id="group-info-name" style="font-size: 1.15rem; font-weight: 600;">Name</h4>
+        <p id="group-info-desc" style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1.5rem;">Description</p>
+
+        <!-- Members section for groups -->
+        <div id="group-members-section" class="hidden" style="text-align: left;">
+          <h5 style="font-size: 0.9rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--text-secondary);">Group Members</h5>
+          <div id="group-members-list" class="members-list"></div>
+        </div>
+      </div>
+      <div class="modal-footer" style="justify-content: space-between;">
+        <button id="btn-block-contact" class="btn btn-danger hidden">Block User</button>
+        <button id="btn-leave-group" class="btn btn-danger hidden">Leave Group</button>
+        <button class="btn btn-secondary modal-close">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Settings -->
+  <div id="modal-settings" class="modal-overlay">
+    <div class="modal-card" style="max-width: 620px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Settings</h3>
+        <button class="icon-btn modal-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="settings-layout">
+          <!-- Settings Navigation Tabs -->
+          <nav class="settings-nav">
+            <button class="settings-tab-btn active" data-tab="profile">👤 Profile</button>
+            <button class="settings-tab-btn" data-tab="privacy">🔒 Privacy</button>
+            <button class="settings-tab-btn" data-tab="notifications">🔔 Alerts</button>
+            <button class="settings-tab-btn" data-tab="security">🛡️ Security</button>
+          </nav>
+
+          <!-- Settings Tab Panes -->
+          <div class="settings-content">
+            
+            <!-- Pane 1: Profile -->
+            <div id="pane-profile" class="settings-pane active">
+              <div class="avatar-upload-wrap">
+                <img id="settings-avatar-preview" src="" class="avatar-preview-img" />
+                <div>
+                  <label class="btn btn-sm btn-secondary" style="cursor: pointer;">
+                    Change Photo
+                    <input type="file" id="settings-avatar-input" class="hidden" accept="image/*" />
+                  </label>
+                  <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.35rem;">JPG, PNG, or GIF</p>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Display Name</label>
+                <input type="text" id="settings-display-name" class="form-input" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Bio / About</label>
+                <textarea id="settings-bio" class="form-textarea" placeholder="Tell others a little about yourself"></textarea>
+              </div>
+              <button id="btn-save-profile" class="btn btn-primary btn-sm">Save Profile</button>
+            </div>
+
+            <!-- Pane 2: Privacy -->
+            <div id="pane-privacy" class="settings-pane">
+              <div class="switch-group">
+                <div class="switch-label-wrap">
+                  <span class="switch-title">Last Seen Time</span>
+                  <span class="switch-desc">Allow others to see when you were last active</span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="settings-show-last-seen" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+
+              <div class="switch-group">
+                <div class="switch-label-wrap">
+                  <span class="switch-title">Online Status</span>
+                  <span class="switch-desc">Show a green indicator when you are active</span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="settings-show-online" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+
+              <div class="switch-group">
+                <div class="switch-label-wrap">
+                  <span class="switch-title">Read Receipts</span>
+                  <span class="switch-desc">Show blue checkmarks when you have read messages</span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="settings-show-read" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <button id="btn-save-privacy" class="btn btn-primary btn-sm" style="margin-top: 1rem;">Save Privacy</button>
+            </div>
+
+            <!-- Pane 3: Notifications -->
+            <div id="pane-notifications" class="settings-pane">
+              <div class="switch-group">
+                <div class="switch-label-wrap">
+                  <span class="switch-title">Sound Chime</span>
+                  <span class="switch-desc">Play a tone for incoming messages</span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="settings-sound-enabled" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+
+              <div class="switch-group">
+                <div class="switch-label-wrap">
+                  <span class="switch-title">Desktop Notifications</span>
+                  <span class="switch-desc">Show browser push alerts when tab is in background</span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="settings-desktop-enabled" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <button id="btn-save-notifications" class="btn btn-primary btn-sm" style="margin-top: 1rem;">Save Preferences</button>
+            </div>
+
+            <!-- Pane 4: Security -->
+            <div id="pane-security" class="settings-pane">
+              <div class="form-group">
+                <label class="form-label">Current Password</label>
+                <input type="password" id="settings-cur-password" class="form-input" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">New Password</label>
+                <input type="password" id="settings-new-password" class="form-input" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Confirm New Password</label>
+                <input type="password" id="settings-conf-password" class="form-input" />
+              </div>
+              <button id="btn-save-password" class="btn btn-primary btn-sm">Update Password</button>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/config.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/websocket.js"></script>
+  <script src="js/notifications.js"></script>
+  <script src="js/users.js"></script>
+  <script src="js/groups.js"></script>
+  <script src="js/profile.js"></script>
+  <script src="js/chat.js"></script>
+</body>
+</html>

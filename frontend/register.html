@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Register | Real-Time Chat</title>
+  <link rel="stylesheet" href="css/global.css">
+  <link rel="stylesheet" href="css/auth.css">
+</head>
+<body class="auth-wrapper">
+  <div class="auth-container">
+    <div class="auth-brand">
+      <div class="auth-brand-logo">💬</div>
+      <h1 class="auth-title">Create Account</h1>
+      <p class="auth-subtitle">Join the real-time conversation</p>
+    </div>
+
+    <form id="register-form" class="auth-form">
+      <div class="form-group">
+        <label for="username" class="form-label">Username</label>
+        <input 
+          type="text" 
+          id="username" 
+          name="username" 
+          class="form-input" 
+          placeholder="e.g. rahul_dev" 
+          required 
+          autocomplete="username"
+        />
+      </div>
+
+      <div class="form-group">
+        <label for="email" class="form-label">Email</label>
+        <input 
+          type="email" 
+          id="email" 
+          name="email" 
+          class="form-input" 
+          placeholder="rahul@example.com" 
+          required 
+          autocomplete="email"
+        />
+      </div>
+
+      <div class="form-group">
+        <label for="display_name" class="form-label">Display Name (Optional)</label>
+        <input 
+          type="text" 
+          id="display_name" 
+          name="display_name" 
+          class="form-input" 
+          placeholder="e.g. Rahul Sharma" 
+          autocomplete="name"
+        />
+      </div>
+
+      <div class="form-group">
+        <label for="password" class="form-label">Password</label>
+        <input 
+          type="password" 
+          id="password" 
+          name="password" 
+          class="form-input" 
+          placeholder="At least 6 characters" 
+          required 
+          autocomplete="new-password"
+        />
+      </div>
+
+      <div class="form-group">
+        <label for="confirm_password" class="form-label">Confirm Password</label>
+        <input 
+          type="password" 
+          id="confirm_password" 
+          name="confirm_password" 
+          class="form-input" 
+          placeholder="Re-enter password" 
+          required 
+          autocomplete="new-password"
+        />
+      </div>
+
+      <button type="submit" id="btn-register-submit" class="btn btn-primary auth-btn-block">Sign Up</button>
+    </form>
+
+    <div class="auth-footer">
+      Already have an account? <a href="login.html" class="auth-link">Sign In</a>
+    </div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script>
+    // Redirect if already logged in
+    Auth.redirectIfAuthenticated();
+
+    const form = document.getElementById('register-form');
+    const submitBtn = document.getElementById('btn-register-submit');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('username').value.trim();
+      const email = document.getElementById('email').value.trim();
+      const displayName = document.getElementById('display_name').value.trim();
+      const password = document.getElementById('password').value;
+      const confirmPassword = document.getElementById('confirm_password').value;
+
+      if (!username || !email || !password || !confirmPassword) {
+        Utils.showToast('Please fill all required fields', 'warning');
+        return;
+      }
+
+      if (password !== confirmPassword) {
+        Utils.showToast('Passwords do not match', 'error');
+        return;
+      }
+
+      if (password.length < 6) {
+        Utils.showToast('Password must be at least 6 characters', 'warning');
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Creating account...';
+
+      try {
+        await Auth.register(username, email, password, confirmPassword, displayName);
+        Utils.showToast('Registration successful! Redirecting...', 'success');
+        setTimeout(() => {
+          window.location.href = 'chat.html';
+        }, 500);
+      } catch (err) {
+        Utils.showToast(err.message, 'error');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Sign Up';
+      }
+    });
+  </script>
+</body>
+</html>

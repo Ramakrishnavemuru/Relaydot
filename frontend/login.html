@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login | Real-Time Chat</title>
+  <link rel="stylesheet" href="css/global.css">
+  <link rel="stylesheet" href="css/auth.css">
+</head>
+<body class="auth-wrapper">
+  <div class="auth-container">
+    <div class="auth-brand">
+      <div class="auth-brand-logo">💬</div>
+      <h1 class="auth-title">Welcome Back</h1>
+      <p class="auth-subtitle">Sign in to continue to your chats</p>
+    </div>
+
+    <form id="login-form" class="auth-form">
+      <div class="form-group">
+        <label for="username_or_email" class="form-label">Username or Email</label>
+        <input 
+          type="text" 
+          id="username_or_email" 
+          name="username_or_email" 
+          class="form-input" 
+          placeholder="e.g. ram or ram@example.com" 
+          required 
+          autocomplete="username"
+        />
+      </div>
+
+      <div class="form-group">
+        <label for="password" class="form-label">Password</label>
+        <input 
+          type="password" 
+          id="password" 
+          name="password" 
+          class="form-input" 
+          placeholder="••••••••" 
+          required 
+          autocomplete="current-password"
+        />
+      </div>
+
+      <div class="auth-links">
+        <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; color: var(--text-secondary);">
+          <input type="checkbox" id="remember-me" checked />
+          <span>Remember me</span>
+        </label>
+        <a href="#" id="btn-forgot-pwd" class="auth-link">Forgot password?</a>
+      </div>
+
+      <button type="submit" id="btn-login-submit" class="btn btn-primary auth-btn-block">Sign In</button>
+    </form>
+
+    <div class="auth-footer">
+      Don't have an account? <a href="register.html" class="auth-link">Create one</a>
+    </div>
+  </div>
+
+  <!-- Forgot / Reset Password Modal -->
+  <div id="modal-forgot-password" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">Reset Password</h3>
+        <button class="icon-btn modal-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="forgot-step-1">
+          <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">
+            Enter your registered email address to receive a password reset code.
+          </p>
+          <div class="form-group">
+            <label class="form-label">Email Address</label>
+            <input type="email" id="forgot-email" class="form-input" placeholder="you@example.com" />
+          </div>
+          <button type="button" id="btn-send-reset-code" class="btn btn-primary" style="width: 100%;">
+            Send Reset Code
+          </button>
+        </div>
+
+        <div id="forgot-step-2" class="hidden">
+          <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">
+            Enter the 6-digit code and your new password.
+          </p>
+          <div class="form-group">
+            <label class="form-label">Reset Code</label>
+            <input type="text" id="reset-code" class="form-input" placeholder="e.g. 123456" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">New Password</label>
+            <input type="password" id="reset-new-password" class="form-input" placeholder="At least 6 characters" />
+          </div>
+          <button type="button" id="btn-submit-new-password" class="btn btn-primary" style="width: 100%;">
+            Set New Password
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script>
+    // Redirect if already logged in
+    Auth.redirectIfAuthenticated();
+
+    const loginForm = document.getElementById('login-form');
+    const submitBtn = document.getElementById('btn-login-submit');
+
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const identifier = document.getElementById('username_or_email').value.trim();
+      const password = document.getElementById('password').value;
+
+      if (!identifier || !password) {
+        Utils.showToast('Please fill in all fields', 'warning');
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Signing in...';
+
+      try {
+        await Auth.login(identifier, password);
+        Utils.showToast('Login successful! Redirecting...', 'success');
+        setTimeout(() => {
+          window.location.href = 'chat.html';
+        }, 500);
+      } catch (err) {
+        Utils.showToast(err.message, 'error');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Sign In';
+      }
+    });
+
+    // Forgot password modal controls
+    const forgotLink = document.getElementById('btn-forgot-pwd');
+    const forgotModal = document.getElementById('modal-forgot-password');
+    const step1 = document.getElementById('forgot-step-1');
+    const step2 = document.getElementById('forgot-step-2');
+    let resetEmail = '';
+
+    forgotLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      Utils.openModal('modal-forgot-password');
+      step1.classList.remove('hidden');
+      step2.classList.add('hidden');
+    });
+
+    document.querySelectorAll('.modal-close').forEach(b => {
+      b.addEventListener('click', () => Utils.closeModal('modal-forgot-password'));
+    });
+
+    document.getElementById('btn-send-reset-code').addEventListener('click', async () => {
+      resetEmail = document.getElementById('forgot-email').value.trim();
+      if (!resetEmail) {
+        Utils.showToast('Please enter your email', 'warning');
+        return;
+      }
+      try {
+        const res = await Auth.forgotPassword(resetEmail);
+        Utils.showToast(res.message + (res.demo_code ? ` (Code: ${res.demo_code})` : ''), 'info', 6000);
+        step1.classList.add('hidden');
+        step2.classList.remove('hidden');
+        if (res.demo_code) {
+          document.getElementById('reset-code').value = res.demo_code;
+        }
+      } catch (err) {
+        Utils.showToast(err.message, 'error');
+      }
+    });
+
+    document.getElementById('btn-submit-new-password').addEventListener('click', async () => {
+      const code = document.getElementById('reset-code').value.trim();
+      const newPwd = document.getElementById('reset-new-password').value;
+      if (!code || !newPwd) {
+        Utils.showToast('Please fill all fields', 'warning');
+        return;
+      }
+      try {
+        const res = await Auth.resetPassword(resetEmail, code, newPwd);
+        Utils.showToast(res.message, 'success');
+        Utils.closeModal('modal-forgot-password');
+      } catch (err) {
+        Utils.showToast(err.message, 'error');
+      }
+    });
+  </script>
+</body>
+</html>

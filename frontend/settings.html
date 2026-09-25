@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings | Real-Time Chat</title>
+  <link rel="stylesheet" href="css/global.css">
+  <link rel="stylesheet" href="css/profile.css">
+  <link rel="stylesheet" href="css/responsive.css">
+</head>
+<body style="display: flex; align-items: center; justify-content: center; min-height: 100vh; background: var(--bg-primary); padding: 1.5rem;">
+  <div class="modal-card" style="width: 100%; max-width: 650px;">
+    <div class="modal-header">
+      <h3 class="modal-title">Settings</h3>
+      <a href="chat.html" class="btn btn-sm btn-secondary">← Back to Chat</a>
+    </div>
+    <div class="modal-body">
+      <div class="settings-layout">
+        <nav class="settings-nav">
+          <button class="settings-tab-btn active" data-tab="privacy">🔒 Privacy</button>
+          <button class="settings-tab-btn" data-tab="notifications">🔔 Alerts</button>
+          <button class="settings-tab-btn" data-tab="security">🛡️ Security</button>
+        </nav>
+
+        <div class="settings-content">
+          <!-- Privacy Pane -->
+          <div id="pane-privacy" class="settings-pane active">
+            <div class="switch-group">
+              <div class="switch-label-wrap">
+                <span class="switch-title">Last Seen</span>
+                <span class="switch-desc">Show others when you were last online</span>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="sett-last-seen" />
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <div class="switch-group">
+              <div class="switch-label-wrap">
+                <span class="switch-title">Online Indicator</span>
+                <span class="switch-desc">Show a green indicator when active</span>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="sett-online" />
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <div class="switch-group">
+              <div class="switch-label-wrap">
+                <span class="switch-title">Read Receipts</span>
+                <span class="switch-desc">Send checkmark receipts when reading messages</span>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="sett-read" />
+                <span class="slider"></span>
+              </label>
+            </div>
+            <button id="btn-save-privacy-page" class="btn btn-primary btn-sm" style="margin-top: 1.25rem;">Save Privacy Settings</button>
+          </div>
+
+          <!-- Notifications Pane -->
+          <div id="pane-notifications" class="settings-pane">
+            <div class="switch-group">
+              <div class="switch-label-wrap">
+                <span class="switch-title">Sound Effects</span>
+                <span class="switch-desc">Play melodic chime on incoming message</span>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="sett-sound" />
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <div class="switch-group">
+              <div class="switch-label-wrap">
+                <span class="switch-title">Desktop Notifications</span>
+                <span class="switch-desc">Push alerts when browser window is inactive</span>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="sett-desktop" />
+                <span class="slider"></span>
+              </label>
+            </div>
+            <button id="btn-save-notif-page" class="btn btn-primary btn-sm" style="margin-top: 1.25rem;">Save Alerts</button>
+          </div>
+
+          <!-- Security Pane -->
+          <div id="pane-security" class="settings-pane">
+            <div class="form-group">
+              <label class="form-label">Current Password</label>
+              <input type="password" id="sett-cur-pwd" class="form-input" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">New Password</label>
+              <input type="password" id="sett-new-pwd" class="form-input" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Confirm New Password</label>
+              <input type="password" id="sett-conf-pwd" class="form-input" />
+            </div>
+            <button id="btn-save-pwd-page" class="btn btn-primary btn-sm">Update Password</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/notifications.js"></script>
+  <script src="js/profile.js"></script>
+  <script>
+    if (Auth.requireAuth()) {
+      const user = Auth.getCurrentUser();
+
+      // Tab switcher
+      const tabs = document.querySelectorAll('.settings-tab-btn');
+      const panes = document.querySelectorAll('.settings-pane');
+      tabs.forEach(tab => {
+        tab.onclick = () => {
+          tabs.forEach(t => t.classList.remove('active'));
+          panes.forEach(p => p.classList.remove('active'));
+          tab.classList.add('active');
+          document.getElementById(`pane-${tab.dataset.tab}`).classList.add('active');
+        };
+      });
+
+      // Populate privacy
+      document.getElementById('sett-last-seen').checked = user.show_last_seen !== false;
+      document.getElementById('sett-online').checked = user.show_online !== false;
+      document.getElementById('sett-read').checked = user.show_read_receipts !== false;
+
+      // Populate notifications
+      const notifPrefs = Notifications.getSettings();
+      document.getElementById('sett-sound').checked = notifPrefs.soundEnabled !== false;
+      document.getElementById('sett-desktop').checked = notifPrefs.desktopEnabled !== false;
+
+      // Save privacy
+      document.getElementById('btn-save-privacy-page').onclick = async () => {
+        const lastSeen = document.getElementById('sett-last-seen').checked;
+        const online = document.getElementById('sett-online').checked;
+        const read = document.getElementById('sett-read').checked;
+        await ProfileManager.updatePrivacy(lastSeen, online, read);
+      };
+
+      // Save notifications
+      document.getElementById('btn-save-notif-page').onclick = async () => {
+        const sound = document.getElementById('sett-sound').checked;
+        const desktop = document.getElementById('sett-desktop').checked;
+        if (desktop) await Notifications.requestPermission();
+        Notifications.saveSettings({ soundEnabled: sound, desktopEnabled: desktop });
+        Utils.showToast('Notification settings saved', 'success');
+      };
+
+      // Change password
+      document.getElementById('btn-save-pwd-page').onclick = async () => {
+        const cur = document.getElementById('sett-cur-pwd').value;
+        const np = document.getElementById('sett-new-pwd').value;
+        const cp = document.getElementById('sett-conf-pwd').value;
+        try {
+          await Auth.changePassword(cur, np, cp);
+          Utils.showToast('Password updated successfully!', 'success');
+          document.getElementById('sett-cur-pwd').value = '';
+          document.getElementById('sett-new-pwd').value = '';
+          document.getElementById('sett-conf-pwd').value = '';
+        } catch (e) {
+          Utils.showToast(e.message, 'error');
+        }
+      };
+    }
+  </script>
+</body>
+</html>
