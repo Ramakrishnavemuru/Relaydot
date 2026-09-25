@@ -18,6 +18,8 @@ from app.websocket.events import (
     EVENT_TYPING_STOP,
     EVENT_READ
 )
+from app.websocket.call_events import ALL_CALL_EVENTS
+from app.websocket.signaling import CallSignalingHandler
 from app.security.jwt import decode_token
 from app.models.user import User
 from app.services.message_service import MessageService
@@ -115,6 +117,11 @@ async def websocket_endpoint(
             # Heartbeat ping
             if event_type == "ping":
                 await websocket.send_text(json.dumps({"event": "pong"}))
+                continue
+
+            # WebRTC Call Signaling (call_invite, call_accept, call_reject, webrtc_offer, webrtc_answer, ice_candidate, call_end)
+            if event_type in ALL_CALL_EVENTS:
+                await CallSignalingHandler.handle_signaling_event(event_type, payload_data, user, db)
                 continue
 
             # Real-time typing indicators

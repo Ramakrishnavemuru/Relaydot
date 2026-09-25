@@ -36,6 +36,9 @@ document.addEventListener('DOMContentLoaded', () => {
     chatSubtitle: Utils.$('#chat-subtitle'),
     chatHeaderStatus: Utils.$('#chat-header-status'),
     btnSearchMessages: Utils.$('#btn-search-messages'),
+    btnVoiceCall: Utils.$('#btn-voice-call'),
+    btnVideoCall: Utils.$('#btn-video-call'),
+    btnAddStory: Utils.$('#btn-add-story'),
     btnChatInfo: Utils.$('#btn-chat-info'),
     btnMobileBack: Utils.$('#btn-mobile-back'),
 
@@ -242,11 +245,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (isGroup) {
       elements.chatSubtitle.textContent = `${conv.members.length} members`;
       elements.chatHeaderStatus.className = 'status-text';
+      if (elements.btnVoiceCall) elements.btnVoiceCall.classList.add('hidden');
+      if (elements.btnVideoCall) elements.btnVideoCall.classList.add('hidden');
     } else {
       const isOnline = conv.other_user && conv.other_user.is_online;
       const lastSeenText = conv.other_user ? Utils.formatLastSeen(isOnline, conv.other_user.last_seen) : 'Offline';
       elements.chatSubtitle.textContent = lastSeenText;
       elements.chatHeaderStatus.className = `status-text ${isOnline ? 'online-text' : ''}`;
+      if (elements.btnVoiceCall) elements.btnVoiceCall.classList.remove('hidden');
+      if (elements.btnVideoCall) elements.btnVideoCall.classList.remove('hidden');
     }
 
     // Reset unread counter on this conversation
@@ -841,6 +848,30 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.btnNewChat.addEventListener('click', () => setupNewChatModal());
     elements.btnNewGroup.addEventListener('click', () => setupNewGroupModal());
     elements.btnSettings.addEventListener('click', () => setupSettingsModal());
+
+    // Voice & Video Call triggers
+    if (elements.btnVoiceCall) {
+      elements.btnVoiceCall.addEventListener('click', () => {
+        if (activeConversation && activeConversation.other_user) {
+          Calls.startCall(activeConversation.other_user, 'audio');
+        }
+      });
+    }
+
+    if (elements.btnVideoCall) {
+      elements.btnVideoCall.addEventListener('click', () => {
+        if (activeConversation && activeConversation.other_user) {
+          Calls.startCall(activeConversation.other_user, 'video');
+        }
+      });
+    }
+
+    // Story creation trigger
+    if (elements.btnAddStory) {
+      elements.btnAddStory.addEventListener('click', () => {
+        Utils.openModal('modal-create-story');
+      });
+    }
     elements.btnSearchMessages.addEventListener('click', () => setupSearchMessagesModal());
     elements.btnChatInfo.addEventListener('click', () => setupChatInfoModal());
 
@@ -1186,6 +1217,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initialize Application
   initUserHeader();
   initWebSocket();
+  Calls.init();
+  Stories.init();
   bindUIEvents();
   loadConversations();
 });

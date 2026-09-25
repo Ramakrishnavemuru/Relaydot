@@ -7,6 +7,8 @@
   <link rel="stylesheet" href="css/global.css">
   <link rel="stylesheet" href="css/chat.css">
   <link rel="stylesheet" href="css/profile.css">
+  <link rel="stylesheet" href="css/calls.css">
+  <link rel="stylesheet" href="css/stories.css">
   <link rel="stylesheet" href="css/responsive.css">
 </head>
 <body>
@@ -32,6 +34,17 @@
           <button id="btn-new-group" class="icon-btn" title="New Group">👥</button>
           <button id="btn-settings" class="icon-btn" title="Settings">⚙️</button>
           <button id="btn-logout" class="icon-btn" title="Sign Out">🚪</button>
+        </div>
+      </div>
+
+      <!-- 24-Hour Stories Carousel Tray -->
+      <div id="stories-tray-container" class="stories-tray-container">
+        <div class="stories-tray-title">
+          <span>Stories</span>
+          <button id="btn-add-story" class="btn btn-sm btn-secondary" style="padding: 2px 8px; font-size: 0.7rem;">+ Add Story</button>
+        </div>
+        <div id="stories-carousel" class="stories-carousel">
+          <!-- Rendered dynamically -->
         </div>
       </div>
 
@@ -76,6 +89,9 @@
           </div>
 
           <div class="chat-header-actions">
+            <!-- Voice and Video Call Triggers (Active for direct chats) -->
+            <button id="btn-voice-call" class="icon-btn hidden" title="Voice Call">📞</button>
+            <button id="btn-video-call" class="icon-btn hidden" title="Video Call">📹</button>
             <button id="btn-search-messages" class="icon-btn" title="Search in messages">🔍</button>
           </div>
         </header>
@@ -159,6 +175,130 @@
       </div>
     </main>
 
+  </div>
+
+  <!-- CALL OVERLAY: Incoming Call Banner -->
+  <div id="incoming-call-overlay" class="incoming-call-overlay">
+    <div class="incoming-caller-avatar-wrap">
+      <div class="pulse-ring"></div>
+      <img id="incoming-caller-avatar" src="" alt="Caller" class="incoming-caller-avatar" />
+    </div>
+    <div class="incoming-caller-info">
+      <span id="incoming-caller-name" class="incoming-caller-name">User</span>
+      <span id="incoming-call-type" class="incoming-call-type">Incoming Call...</span>
+    </div>
+    <div class="incoming-call-actions">
+      <button id="btn-accept-call" class="btn-call-accept" title="Accept Call">📞</button>
+      <button id="btn-decline-call" class="btn-call-decline" title="Decline Call">❌</button>
+    </div>
+  </div>
+
+  <!-- CALL MODAL: Fullscreen Active Video & Voice Call Stage -->
+  <div id="call-modal-overlay" class="call-modal-overlay">
+    <div class="call-modal-container">
+      <div class="call-header-info">
+        <h3 id="call-peer-name" class="call-peer-name">User</h3>
+        <span id="call-timer" class="call-status-timer">Calling...</span>
+      </div>
+
+      <div class="call-media-stage">
+        <!-- Video Mode -->
+        <div id="video-call-stage" style="width: 100%; height: 100%; position: relative;">
+          <video id="remote-video-el" class="remote-video" autoplay playsinline></video>
+          <video id="local-video-el" class="local-video-pip" autoplay playsinline muted></video>
+        </div>
+        <!-- Voice Mode -->
+        <div id="voice-call-stage" class="voice-call-avatar-stage hidden">
+          <img id="voice-call-avatar" src="" class="voice-avatar-circle" />
+        </div>
+      </div>
+
+      <!-- Call Controls -->
+      <div class="call-controls-bar">
+        <button id="btn-call-mute-mic" class="call-control-btn" title="Mute/Unmute Mic">🎤</button>
+        <button id="btn-call-toggle-cam" class="call-control-btn" title="Turn Camera On/Off">📹</button>
+        <button id="btn-call-switch-cam" class="call-control-btn" title="Switch Camera">🔄</button>
+        <button id="btn-call-end" class="call-control-btn btn-end-call" title="End Call">☎</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- STORIES MODAL: Fullscreen Story Viewer -->
+  <div id="story-viewer-overlay" class="story-viewer-overlay">
+    <div class="story-viewer-card">
+      <!-- Segmented Progress Bar -->
+      <div id="story-progress-container" class="story-progress-container"></div>
+
+      <!-- Story Header -->
+      <div class="story-viewer-header">
+        <div class="story-author-info">
+          <img id="story-author-avatar" src="" class="story-author-avatar" />
+          <span id="story-author-name" class="story-author-name">User</span>
+          <span id="story-time-ago" class="story-time-ago">Just now</span>
+        </div>
+        <div class="story-header-actions">
+          <button id="btn-delete-story" class="story-icon-btn hidden" title="Delete Story">🗑️</button>
+          <button id="btn-close-story-viewer" class="story-icon-btn" title="Close">✕</button>
+        </div>
+      </div>
+
+      <!-- Media Stage -->
+      <div id="story-media-stage" class="story-media-stage">
+        <div id="story-tap-left" class="story-tap-zone story-tap-left"></div>
+        <div id="story-tap-right" class="story-tap-zone story-tap-right"></div>
+      </div>
+
+      <!-- Story Caption -->
+      <div id="story-caption-overlay" class="story-caption-overlay hidden"></div>
+
+      <!-- Story Footer: Views (for author) or Reply (for friends) -->
+      <div class="story-viewer-footer">
+        <button id="story-views-pill" class="story-views-pill hidden">
+          <span>👁</span> <span id="story-views-count-text">0 views</span>
+        </button>
+        <form id="story-reply-form" class="story-reply-form hidden">
+          <input type="text" id="story-reply-input" class="story-reply-input" placeholder="Reply to story..." autocomplete="off" />
+          <button type="submit" class="btn btn-sm btn-primary">Send</button>
+        </form>
+      </div>
+
+      <!-- Viewers Drawer (Author only) -->
+      <div id="story-viewers-drawer" class="story-viewers-drawer">
+        <div class="drawer-header">
+          <span>Story Viewers</span>
+          <button id="btn-close-viewers-drawer" class="icon-btn" style="width:24px;height:24px;">✕</button>
+        </div>
+        <div id="story-viewers-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STORIES MODAL: Create New Story -->
+  <div id="modal-create-story" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">Create Status Story</h3>
+        <button class="icon-btn modal-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Select Photo or Video (Expires in 24 hours)</label>
+          <input type="file" id="story-file-input" class="form-input" accept="image/*,video/*" required />
+        </div>
+        <div id="story-create-preview-wrap" style="text-align: center; margin-bottom: 1rem;">
+          <img id="story-create-preview-img" src="" class="hidden" style="max-width: 100%; max-height: 220px; border-radius: var(--radius-md); object-fit: contain;" />
+          <video id="story-create-preview-video" src="" class="hidden" controls style="max-width: 100%; max-height: 220px; border-radius: var(--radius-md);"></video>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Caption (Optional)</label>
+          <textarea id="story-create-caption" class="form-textarea" placeholder="Add a caption to your story..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary modal-close">Cancel</button>
+        <button id="btn-submit-story" class="btn btn-primary">Post Story</button>
+      </div>
+    </div>
   </div>
 
   <!-- MODAL: New Direct Chat -->
@@ -391,6 +531,9 @@
   <script src="js/auth.js"></script>
   <script src="js/websocket.js"></script>
   <script src="js/notifications.js"></script>
+  <script src="js/webrtc.js"></script>
+  <script src="js/calls.js"></script>
+  <script src="js/stories.js"></script>
   <script src="js/users.js"></script>
   <script src="js/groups.js"></script>
   <script src="js/profile.js"></script>

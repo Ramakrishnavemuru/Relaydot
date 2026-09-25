@@ -6,6 +6,8 @@ from app.routes.groups import router as groups_router
 from app.routes.messages import router as messages_router
 from app.routes.search import router as search_router
 from app.routes.uploads import router as uploads_router
+from app.routes.calls import router as calls_router
+from app.routes.stories import router as stories_router
 
 api_router = APIRouter(prefix="/api")
 
@@ -16,3 +18,5 @@ api_router.include_router(groups_router)
 api_router.include_router(messages_router)
 api_router.include_router(search_router)
 api_router.include_router(uploads_router)
+api_router.include_router(calls_router)
+api_router.include_router(stories_router)

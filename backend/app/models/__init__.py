@@ -4,6 +4,8 @@ from app.models.message import Message, MessageRead
 from app.models.attachment import Attachment
 from app.models.reaction import MessageReaction
 from app.models.block import BlockedUser
+from app.models.story import Story
+from app.models.story_view import StoryView
 
 __all__ = [
     "User",
@@ -13,5 +15,7 @@ __all__ = [
     "MessageRead",
     "Attachment",
     "MessageReaction",
-    "BlockedUser"
+    "BlockedUser",
+    "Story",
+    "StoryView"
 ]
