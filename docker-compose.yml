@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  chat-app:
+    build: .
+    container_name: realtime_chat_app
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_NAME=Real-Time Chat App
+      - APP_ENV=production
+      - DEBUG=False
+      - SECRET_KEY=replace-with-a-secure-random-secret-key-in-production
+      - DATABASE_URL=sqlite:////app/data/chat.db
+      - UPLOAD_DIR=/app/data/uploads
+      # Optional Cloudinary credentials:
+      # - CLOUDINARY_CLOUD_NAME=your_cloud_name
+      # - CLOUDINARY_API_KEY=your_api_key
+      # - CLOUDINARY_API_SECRET=your_api_secret
+    volumes:
+      - chat_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  chat_data:
