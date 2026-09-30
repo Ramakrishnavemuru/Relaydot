@@ -25,15 +25,37 @@ from app.models.user import User
 from app.services.message_service import MessageService
 from app.schemas.message import MessageCreate
 
+from app.models.session import UserSession
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("app")
 
 
+def run_schema_migrations():
+    """Ensure database schema is up-to-date with new auth columns."""
+    try:
+        with engine.connect() as conn:
+            cols = [row[1] for row in conn.exec_driver_sql("PRAGMA table_info(users)").fetchall()]
+            if cols:
+                if "phone_number" not in cols:
+                    conn.exec_driver_sql("ALTER TABLE users ADD COLUMN phone_number VARCHAR(30)")
+                if "is_verified" not in cols:
+                    conn.exec_driver_sql("ALTER TABLE users ADD COLUMN is_verified BOOLEAN DEFAULT 1")
+                if "totp_secret" not in cols:
+                    conn.exec_driver_sql("ALTER TABLE users ADD COLUMN totp_secret VARCHAR(64)")
+                if "totp_enabled" not in cols:
+                    conn.exec_driver_sql("ALTER TABLE users ADD COLUMN totp_enabled BOOLEAN DEFAULT 0")
+            conn.commit()
+    except Exception as e:
+        logger.warning(f"Schema migration warning: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: ensure tables created
-    logger.info("Initializing database tables...")
+    # Startup: ensure tables created and migrated
+    logger.info("Initializing database tables and migrations...")
+    run_schema_migrations()
     Base.metadata.create_all(bind=engine)
     logger.info("Database initialized.")
     yield
@@ -78,11 +100,15 @@ async def websocket_endpoint(
             token = auth_header.split(" ", 1)[1]
 
     if not token:
+        # Check cookie
+        token = websocket.cookies.get("access_token")
+
+    if not token:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
     payload = decode_token(token)
-    if not payload:
+    if not payload or payload.get("type") == "2fa_ticket":
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
@@ -94,9 +120,16 @@ async def websocket_endpoint(
     try:
         user_id = int(user_id_str)
         user = db.query(User).filter(User.id == user_id).first()
-        if not user:
+        if not user or not user.is_verified:
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
+
+        session_id = payload.get("session_id")
+        if session_id:
+            s = db.query(UserSession).filter(UserSession.session_id == session_id).first()
+            if not s or s.revoked:
+                await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+                return
     except Exception:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return

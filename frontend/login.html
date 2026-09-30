@@ -6,35 +6,99 @@
   <title>Login | Real-Time Chat</title>
   <link rel="stylesheet" href="css/global.css">
   <link rel="stylesheet" href="css/auth.css">
+  <style>
+    .auth-tabs {
+      display: flex;
+      background: var(--bg-hover, #f1f5f9);
+      border-radius: 8px;
+      padding: 4px;
+      margin-bottom: 1.5rem;
+      gap: 4px;
+    }
+    .auth-tab-btn {
+      flex: 1;
+      padding: 0.5rem 0.75rem;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary, #64748b);
+      font-size: 0.875rem;
+      font-weight: 500;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .auth-tab-btn.active {
+      background: var(--bg-card, #ffffff);
+      color: var(--primary-color, #6366f1);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      font-weight: 600;
+    }
+    .passkey-hero-box {
+      text-align: center;
+      padding: 1.5rem 1rem;
+      border: 2px dashed var(--border-color, #e2e8f0);
+      border-radius: 12px;
+      margin-bottom: 1rem;
+      background: var(--bg-subtle, #f8fafc);
+    }
+    .passkey-icon-large {
+      font-size: 2.75rem;
+      margin-bottom: 0.5rem;
+      display: inline-block;
+    }
+    .otp-input-group {
+      display: flex;
+      gap: 0.5rem;
+    }
+    .otp-input-group .form-input {
+      flex: 1;
+    }
+    .recovery-code-toggle {
+      display: block;
+      margin-top: 0.75rem;
+      font-size: 0.8125rem;
+      color: var(--primary-color, #6366f1);
+      cursor: pointer;
+      text-align: center;
+    }
+  </style>
 </head>
 <body class="auth-wrapper">
   <div class="auth-container">
     <div class="auth-brand">
       <div class="auth-brand-logo">💬</div>
       <h1 class="auth-title">Welcome Back</h1>
-      <p class="auth-subtitle">Sign in to continue to your chats</p>
+      <p class="auth-subtitle">Sign in to your account</p>
     </div>
 
-    <form id="login-form" class="auth-form">
+    <!-- Login Method Tabs -->
+    <div class="auth-tabs">
+      <button type="button" class="auth-tab-btn active" data-tab="password">Password</button>
+      <button type="button" class="auth-tab-btn" data-tab="otp">Email / Phone OTP</button>
+      <button type="button" class="auth-tab-btn" data-tab="passkey">Passkey 🔑</button>
+    </div>
+
+    <!-- Method 1: Password Login -->
+    <form id="login-form-password" class="auth-form">
       <div class="form-group">
-        <label for="username_or_email" class="form-label">Username or Email</label>
+        <label for="pwd_identifier" class="form-label">Username, Email, or Phone</label>
         <input 
           type="text" 
-          id="username_or_email" 
-          name="username_or_email" 
+          id="pwd_identifier" 
+          name="pwd_identifier" 
           class="form-input" 
-          placeholder="e.g. ram or ram@example.com" 
+          placeholder="e.g. ram, ram@example.com, or +1..." 
           required 
           autocomplete="username"
         />
       </div>
 
       <div class="form-group">
-        <label for="password" class="form-label">Password</label>
+        <label for="pwd_password" class="form-label">Password</label>
         <input 
           type="password" 
-          id="password" 
-          name="password" 
+          id="pwd_password" 
+          name="pwd_password" 
           class="form-input" 
           placeholder="••••••••" 
           required 
@@ -45,16 +109,108 @@
       <div class="auth-links">
         <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; color: var(--text-secondary);">
           <input type="checkbox" id="remember-me" checked />
-          <span>Remember me</span>
+          <span>Remember this device</span>
         </label>
         <a href="#" id="btn-forgot-pwd" class="auth-link">Forgot password?</a>
       </div>
 
-      <button type="submit" id="btn-login-submit" class="btn btn-primary auth-btn-block">Sign In</button>
+      <button type="submit" id="btn-pwd-submit" class="btn btn-primary auth-btn-block">Sign In</button>
     </form>
+
+    <!-- Method 2: OTP Login (Passwordless) -->
+    <form id="login-form-otp" class="auth-form hidden">
+      <div class="form-group">
+        <label for="otp_identifier" class="form-label">Email or Phone Number</label>
+        <div class="otp-input-group">
+          <input 
+            type="text" 
+            id="otp_identifier" 
+            class="form-input" 
+            placeholder="you@example.com or +1..." 
+            required 
+          />
+          <button type="button" id="btn-send-login-otp" class="btn btn-secondary" style="white-space: nowrap;">
+            Send Code
+          </button>
+        </div>
+      </div>
+
+      <div id="otp-code-group" class="form-group hidden">
+        <label for="otp_code_input" class="form-label">6-Digit Code</label>
+        <input 
+          type="text" 
+          id="otp_code_input" 
+          class="form-input" 
+          placeholder="e.g. 123456" 
+          maxlength="6"
+        />
+        <p id="otp-hint" style="font-size: 0.75rem; color: var(--primary-color); margin-top: 0.35rem; display: none;"></p>
+      </div>
+
+      <button type="submit" id="btn-otp-submit" class="btn btn-primary auth-btn-block" disabled>Verify & Sign In</button>
+    </form>
+
+    <!-- Method 3: Passkey Login -->
+    <div id="login-panel-passkey" class="auth-form hidden">
+      <div class="passkey-hero-box">
+        <span class="passkey-icon-large">🛡️🔑</span>
+        <h3 style="font-size: 1.1rem; margin-bottom: 0.35rem;">Passwordless Sign In</h3>
+        <p style="font-size: 0.8125rem; color: var(--text-secondary); line-height: 1.4;">
+          Authenticate securely using biometric Touch ID, Face ID, Windows Hello, or your security key.
+        </p>
+      </div>
+
+      <div class="form-group">
+        <label for="passkey_identifier" class="form-label">Account Username or Email (Optional)</label>
+        <input 
+          type="text" 
+          id="passkey_identifier" 
+          class="form-input" 
+          placeholder="Leave blank for automatic passkey lookup" 
+        />
+      </div>
+
+      <button type="button" id="btn-passkey-signin" class="btn btn-primary auth-btn-block">
+        Sign In with Passkey
+      </button>
+    </div>
 
     <div class="auth-footer">
       Don't have an account? <a href="register.html" class="auth-link">Create one</a>
+    </div>
+  </div>
+
+  <!-- 2FA Challenge Modal -->
+  <div id="modal-2fa-challenge" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">🛡️ Two-Factor Authentication</h3>
+        <button class="icon-btn modal-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <p id="twofa-subtitle" style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">
+          Enter the 6-digit code from your authenticator app (Google Authenticator, Authy, etc.).
+        </p>
+
+        <div class="form-group">
+          <label id="twofa-input-label" class="form-label">Authenticator Code</label>
+          <input 
+            type="text" 
+            id="twofa-code-input" 
+            class="form-input" 
+            placeholder="e.g. 123456" 
+            autofocus 
+          />
+        </div>
+
+        <button type="button" id="btn-submit-2fa" class="btn btn-primary" style="width: 100%;">
+          Verify & Continue
+        </button>
+
+        <span id="btn-toggle-recovery" class="recovery-code-toggle">
+          Use a backup recovery code instead
+        </span>
+      </div>
     </div>
   </div>
 
@@ -102,43 +258,195 @@
   <script src="js/config.js"></script>
   <script src="js/utils.js"></script>
   <script src="js/api.js"></script>
+  <script src="js/passkeys.js"></script>
   <script src="js/auth.js"></script>
   <script>
-    // Redirect if already logged in
+    // Redirect if already authenticated
     Auth.redirectIfAuthenticated();
 
-    const loginForm = document.getElementById('login-form');
-    const submitBtn = document.getElementById('btn-login-submit');
+    // Tabs switching
+    const tabButtons = document.querySelectorAll('.auth-tab-btn');
+    const pwdForm = document.getElementById('login-form-password');
+    const otpForm = document.getElementById('login-form-otp');
+    const passkeyPanel = document.getElementById('login-panel-passkey');
 
-    loginForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const identifier = document.getElementById('username_or_email').value.trim();
-      const password = document.getElementById('password').value;
+    tabButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        tabButtons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const tab = btn.dataset.tab;
 
-      if (!identifier || !password) {
-        Utils.showToast('Please fill in all fields', 'warning');
+        pwdForm.classList.toggle('hidden', tab !== 'password');
+        otpForm.classList.toggle('hidden', tab !== 'otp');
+        passkeyPanel.classList.toggle('hidden', tab !== 'passkey');
+      });
+    });
+
+    // 2FA state holder
+    let active2FATicket = null;
+    let isRecoveryMode = false;
+
+    function prompt2FA(ticket) {
+      active2FATicket = ticket;
+      isRecoveryMode = false;
+      document.getElementById('twofa-input-label').textContent = 'Authenticator Code';
+      document.getElementById('twofa-subtitle').textContent = 'Enter the 6-digit code from your authenticator app (Google Authenticator, Authy, etc.).';
+      document.getElementById('twofa-code-input').placeholder = 'e.g. 123456';
+      document.getElementById('twofa-code-input').value = '';
+      document.getElementById('btn-toggle-recovery').textContent = 'Use a backup recovery code instead';
+      Utils.openModal('modal-2fa-challenge');
+    }
+
+    document.getElementById('btn-toggle-recovery').addEventListener('click', () => {
+      isRecoveryMode = !isRecoveryMode;
+      const label = document.getElementById('twofa-input-label');
+      const subtitle = document.getElementById('twofa-subtitle');
+      const input = document.getElementById('twofa-code-input');
+      const toggle = document.getElementById('btn-toggle-recovery');
+
+      if (isRecoveryMode) {
+        label.textContent = 'Recovery Code';
+        subtitle.textContent = 'Enter one of your 8-character single-use recovery codes (e.g. 1234-5678).';
+        input.placeholder = 'XXXX-XXXX';
+        toggle.textContent = 'Use authenticator app code instead';
+      } else {
+        label.textContent = 'Authenticator Code';
+        subtitle.textContent = 'Enter the 6-digit code from your authenticator app.';
+        input.placeholder = 'e.g. 123456';
+        toggle.textContent = 'Use a backup recovery code instead';
+      }
+      input.value = '';
+      input.focus();
+    });
+
+    document.getElementById('btn-submit-2fa').addEventListener('click', async () => {
+      const code = document.getElementById('twofa-code-input').value.trim();
+      if (!code) {
+        Utils.showToast('Please enter your code', 'warning');
         return;
       }
+
+      try {
+        await Auth.verify2FA(active2FATicket, code);
+        Utils.showToast('2FA Verified! Redirecting...', 'success');
+        Utils.closeModal('modal-2fa-challenge');
+        setTimeout(() => window.location.href = 'chat.html', 500);
+      } catch (err) {
+        Utils.showToast(err.message, 'error');
+      }
+    });
+
+    // 1. Password Login Handler
+    pwdForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const identifier = document.getElementById('pwd_identifier').value.trim();
+      const password = document.getElementById('pwd_password').value;
+      const submitBtn = document.getElementById('btn-pwd-submit');
 
       submitBtn.disabled = true;
       submitBtn.textContent = 'Signing in...';
 
       try {
-        await Auth.login(identifier, password);
-        Utils.showToast('Login successful! Redirecting...', 'success');
-        setTimeout(() => {
-          window.location.href = 'chat.html';
-        }, 500);
+        const res = await Auth.login(identifier, password);
+        if (res && res.requires_2fa) {
+          prompt2FA(res.ticket);
+        } else {
+          Utils.showToast('Login successful! Redirecting...', 'success');
+          setTimeout(() => window.location.href = 'chat.html', 500);
+        }
       } catch (err) {
         Utils.showToast(err.message, 'error');
+      } finally {
         submitBtn.disabled = false;
         submitBtn.textContent = 'Sign In';
       }
     });
 
+    // 2. OTP Login Handler
+    const btnSendOTP = document.getElementById('btn-send-login-otp');
+    const otpCodeGroup = document.getElementById('otp-code-group');
+    const btnOtpSubmit = document.getElementById('btn-otp-submit');
+    const otpHint = document.getElementById('otp-hint');
+
+    btnSendOTP.addEventListener('click', async () => {
+      const identifier = document.getElementById('otp_identifier').value.trim();
+      if (!identifier) {
+        Utils.showToast('Please enter your email or phone number', 'warning');
+        return;
+      }
+
+      btnSendOTP.disabled = true;
+      btnSendOTP.textContent = 'Sending...';
+
+      try {
+        const res = await Auth.sendOTP(identifier, 'LOGIN');
+        Utils.showToast(res.message, 'success');
+        otpCodeGroup.classList.remove('hidden');
+        btnOtpSubmit.disabled = false;
+        if (res.demo_otp) {
+          otpHint.style.display = 'block';
+          otpHint.textContent = `Demo Code: ${res.demo_otp} (click to fill)`;
+          otpHint.onclick = () => document.getElementById('otp_code_input').value = res.demo_otp;
+        }
+      } catch (err) {
+        Utils.showToast(err.message, 'error');
+      } finally {
+        btnSendOTP.disabled = false;
+        btnSendOTP.textContent = 'Send Code';
+      }
+    });
+
+    otpForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const identifier = document.getElementById('otp_identifier').value.trim();
+      const code = document.getElementById('otp_code_input').value.trim();
+
+      if (!identifier || !code) {
+        Utils.showToast('Please enter the code', 'warning');
+        return;
+      }
+
+      btnOtpSubmit.disabled = true;
+      btnOtpSubmit.textContent = 'Verifying...';
+
+      try {
+        const res = await Auth.verifyOTP(identifier, code, 'LOGIN');
+        if (res && res.requires_2fa) {
+          prompt2FA(res.ticket);
+        } else {
+          Utils.showToast('Sign in successful! Redirecting...', 'success');
+          setTimeout(() => window.location.href = 'chat.html', 500);
+        }
+      } catch (err) {
+        Utils.showToast(err.message, 'error');
+      } finally {
+        btnOtpSubmit.disabled = false;
+        btnOtpSubmit.textContent = 'Verify & Sign In';
+      }
+    });
+
+    // 3. Passkey Login Handler
+    document.getElementById('btn-passkey-signin').addEventListener('click', async () => {
+      const btn = document.getElementById('btn-passkey-signin');
+      const identifier = document.getElementById('passkey_identifier').value.trim() || null;
+
+      btn.disabled = true;
+      btn.textContent = 'Authenticating...';
+
+      try {
+        await Auth.loginWithPasskey(identifier);
+        Utils.showToast('Passkey authenticated! Redirecting...', 'success');
+        setTimeout(() => window.location.href = 'chat.html', 500);
+      } catch (err) {
+        Utils.showToast(err.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Sign In with Passkey';
+      }
+    });
+
     // Forgot password modal controls
     const forgotLink = document.getElementById('btn-forgot-pwd');
-    const forgotModal = document.getElementById('modal-forgot-password');
     const step1 = document.getElementById('forgot-step-1');
     const step2 = document.getElementById('forgot-step-2');
     let resetEmail = '';
@@ -151,7 +459,10 @@
     });
 
     document.querySelectorAll('.modal-close').forEach(b => {
-      b.addEventListener('click', () => Utils.closeModal('modal-forgot-password'));
+      b.addEventListener('click', () => {
+        Utils.closeModal('modal-forgot-password');
+        Utils.closeModal('modal-2fa-challenge');
+      });
     });
 
     document.getElementById('btn-send-reset-code').addEventListener('click', async () => {

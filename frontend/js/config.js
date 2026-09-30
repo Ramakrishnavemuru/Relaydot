@@ -13,6 +13,7 @@ const CONFIG = {
   WS_URL: `${wsProtocol}//${host}/ws`,
   FILE_BASE_URL: `${protocol}//${host}`,
   TOKEN_KEY: 'chat_access_token',
+  REFRESH_TOKEN_KEY: 'chat_refresh_token',
   USER_KEY: 'chat_user_data',
   SETTINGS_KEY: 'chat_app_settings',
   MAX_FILE_SIZE_MB: 15,

@@ -6,6 +6,41 @@
   <title>Register | Real-Time Chat</title>
   <link rel="stylesheet" href="css/global.css">
   <link rel="stylesheet" href="css/auth.css">
+  <style>
+    .contact-type-toggle {
+      display: flex;
+      background: var(--bg-hover, #f1f5f9);
+      border-radius: 8px;
+      padding: 3px;
+      margin-bottom: 1.25rem;
+    }
+    .contact-type-btn {
+      flex: 1;
+      padding: 0.45rem;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary, #64748b);
+      font-size: 0.8125rem;
+      font-weight: 500;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .contact-type-btn.active {
+      background: var(--bg-card, #ffffff);
+      color: var(--primary-color, #6366f1);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+      font-weight: 600;
+    }
+    .passkey-promo-box {
+      border: 1px solid var(--border-color, #e2e8f0);
+      background: var(--bg-subtle, #f8fafc);
+      padding: 1.25rem;
+      border-radius: 10px;
+      margin-top: 1rem;
+      text-align: center;
+    }
+  </style>
 </head>
 <body class="auth-wrapper">
   <div class="auth-container">
@@ -13,6 +48,12 @@
       <div class="auth-brand-logo">💬</div>
       <h1 class="auth-title">Create Account</h1>
       <p class="auth-subtitle">Join the real-time conversation</p>
+    </div>
+
+    <!-- Toggle between Email and Phone Number -->
+    <div class="contact-type-toggle">
+      <button type="button" class="contact-type-btn active" data-type="email">📧 Email Address</button>
+      <button type="button" class="contact-type-btn" data-type="phone">📱 Phone Number</button>
     </div>
 
     <form id="register-form" class="auth-form">
@@ -29,16 +70,27 @@
         />
       </div>
 
-      <div class="form-group">
-        <label for="email" class="form-label">Email</label>
+      <div id="group-email" class="form-group">
+        <label for="email" class="form-label">Email Address</label>
         <input 
           type="email" 
           id="email" 
           name="email" 
           class="form-input" 
           placeholder="rahul@example.com" 
-          required 
           autocomplete="email"
+        />
+      </div>
+
+      <div id="group-phone" class="form-group hidden">
+        <label for="phone" class="form-label">Phone Number</label>
+        <input 
+          type="tel" 
+          id="phone" 
+          name="phone" 
+          class="form-input" 
+          placeholder="+14155552671" 
+          autocomplete="tel"
         />
       </div>
 
@@ -55,19 +107,21 @@
       </div>
 
       <div class="form-group">
-        <label for="password" class="form-label">Password</label>
+        <label for="password" class="form-label">Password (Optional)</label>
         <input 
           type="password" 
           id="password" 
           name="password" 
           class="form-input" 
-          placeholder="At least 6 characters" 
-          required 
+          placeholder="Leave blank for passwordless OTP/Passkey" 
           autocomplete="new-password"
         />
+        <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">
+          Optional. You can log in anytime with Email/Phone OTP or Passkeys.
+        </p>
       </div>
 
-      <div class="form-group">
+      <div id="group-confirm-pwd" class="form-group hidden">
         <label for="confirm_password" class="form-label">Confirm Password</label>
         <input 
           type="password" 
@@ -75,12 +129,11 @@
           name="confirm_password" 
           class="form-input" 
           placeholder="Re-enter password" 
-          required 
           autocomplete="new-password"
         />
       </div>
 
-      <button type="submit" id="btn-register-submit" class="btn btn-primary auth-btn-block">Sign Up</button>
+      <button type="submit" id="btn-register-submit" class="btn btn-primary auth-btn-block">Continue</button>
     </form>
 
     <div class="auth-footer">
@@ -88,54 +141,219 @@
     </div>
   </div>
 
+  <!-- OTP Verification Modal -->
+  <div id="modal-verify-account" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">📩 Verify Your Account</h3>
+      </div>
+      <div class="modal-body">
+        <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">
+          We sent a 6-digit verification code to <strong id="verify-target-text"></strong>. Please enter it below to activate your account.
+        </p>
+
+        <div class="form-group">
+          <label class="form-label">6-Digit Verification Code</label>
+          <input 
+            type="text" 
+            id="register-otp-input" 
+            class="form-input" 
+            placeholder="e.g. 123456" 
+            maxlength="6"
+            style="letter-spacing: 0.25rem; font-size: 1.25rem; text-align: center;" 
+          />
+          <p id="register-demo-hint" style="font-size: 0.75rem; color: var(--primary-color); margin-top: 0.4rem; cursor: pointer;"></p>
+        </div>
+
+        <button type="button" id="btn-confirm-otp" class="btn btn-primary" style="width: 100%;">
+          Verify & Activate Account
+        </button>
+
+        <!-- Post-Verification Passkey Setup Prompt -->
+        <div id="post-verify-passkey-box" class="passkey-promo-box hidden">
+          <div style="font-size: 1.5rem; margin-bottom: 0.35rem;">🔑</div>
+          <h4 style="font-size: 0.95rem; margin-bottom: 0.25rem;">Add a Passkey for 1-Tap Login?</h4>
+          <p style="font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
+            Use Face ID, Touch ID, or Windows Hello for instant, phishing-proof sign ins.
+          </p>
+          <div style="display: flex; gap: 0.5rem; justify-content: center;">
+            <button type="button" id="btn-add-passkey-now" class="btn btn-primary btn-sm">Add Passkey</button>
+            <button type="button" id="btn-skip-passkey" class="btn btn-secondary btn-sm">Go to Chats</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="js/config.js"></script>
   <script src="js/utils.js"></script>
   <script src="js/api.js"></script>
+  <script src="js/passkeys.js"></script>
   <script src="js/auth.js"></script>
   <script>
-    // Redirect if already logged in
     Auth.redirectIfAuthenticated();
 
+    let contactType = 'email';
+    let pendingIdentifier = '';
+
+    // Contact Type Toggle
+    const typeButtons = document.querySelectorAll('.contact-type-btn');
+    const groupEmail = document.getElementById('group-email');
+    const groupPhone = document.getElementById('group-phone');
+    const emailInput = document.getElementById('email');
+    const phoneInput = document.getElementById('phone');
+
+    typeButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        typeButtons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        contactType = btn.dataset.type;
+
+        groupEmail.classList.toggle('hidden', contactType !== 'email');
+        groupPhone.classList.toggle('hidden', contactType !== 'phone');
+
+        if (contactType === 'email') {
+          emailInput.required = true;
+          phoneInput.required = false;
+          phoneInput.value = '';
+        } else {
+          emailInput.required = false;
+          emailInput.value = '';
+          phoneInput.required = true;
+        }
+      });
+    });
+
+    // Password input toggle confirm password
+    const pwdInput = document.getElementById('password');
+    const confirmGroup = document.getElementById('group-confirm-pwd');
+    const confirmInput = document.getElementById('confirm_password');
+
+    pwdInput.addEventListener('input', () => {
+      if (pwdInput.value.length > 0) {
+        confirmGroup.classList.remove('hidden');
+        confirmInput.required = true;
+      } else {
+        confirmGroup.classList.add('hidden');
+        confirmInput.required = false;
+        confirmInput.value = '';
+      }
+    });
+
+    // Registration Form Submit
     const form = document.getElementById('register-form');
     const submitBtn = document.getElementById('btn-register-submit');
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const username = document.getElementById('username').value.trim();
-      const email = document.getElementById('email').value.trim();
-      const displayName = document.getElementById('display_name').value.trim();
-      const password = document.getElementById('password').value;
-      const confirmPassword = document.getElementById('confirm_password').value;
+      const email = emailInput.value.trim() || null;
+      const phone = phoneInput.value.trim() || null;
+      const displayName = document.getElementById('display_name').value.trim() || null;
+      const password = pwdInput.value || null;
+      const confirmPassword = confirmInput.value || null;
 
-      if (!username || !email || !password || !confirmPassword) {
-        Utils.showToast('Please fill all required fields', 'warning');
+      if (!username) {
+        Utils.showToast('Please provide a username', 'warning');
         return;
       }
 
-      if (password !== confirmPassword) {
-        Utils.showToast('Passwords do not match', 'error');
+      if (contactType === 'email' && !email) {
+        Utils.showToast('Please enter your email address', 'warning');
         return;
       }
 
-      if (password.length < 6) {
-        Utils.showToast('Password must be at least 6 characters', 'warning');
+      if (contactType === 'phone' && !phone) {
+        Utils.showToast('Please enter your phone number', 'warning');
         return;
+      }
+
+      if (password) {
+        if (password.length < 6) {
+          Utils.showToast('Password must be at least 6 characters', 'warning');
+          return;
+        }
+        if (password !== confirmPassword) {
+          Utils.showToast('Passwords do not match', 'error');
+          return;
+        }
       }
 
       submitBtn.disabled = true;
       submitBtn.textContent = 'Creating account...';
 
       try {
-        await Auth.register(username, email, password, confirmPassword, displayName);
-        Utils.showToast('Registration successful! Redirecting...', 'success');
-        setTimeout(() => {
-          window.location.href = 'chat.html';
-        }, 500);
+        const payload = {
+          username,
+          email,
+          phone_number: phone,
+          display_name: displayName,
+          password,
+          confirm_password: confirmPassword
+        };
+
+        const res = await Auth.register(payload);
+        pendingIdentifier = email || phone;
+        document.getElementById('verify-target-text').textContent = pendingIdentifier;
+
+        if (res.demo_otp) {
+          const hint = document.getElementById('register-demo-hint');
+          hint.textContent = `Demo Code: ${res.demo_otp} (click to fill)`;
+          hint.onclick = () => document.getElementById('register-otp-input').value = res.demo_otp;
+        }
+
+        Utils.openModal('modal-verify-account');
       } catch (err) {
         Utils.showToast(err.message, 'error');
+      } finally {
         submitBtn.disabled = false;
-        submitBtn.textContent = 'Sign Up';
+        submitBtn.textContent = 'Continue';
       }
+    });
+
+    // Confirm OTP
+    document.getElementById('btn-confirm-otp').addEventListener('click', async () => {
+      const code = document.getElementById('register-otp-input').value.trim();
+      if (!code) {
+        Utils.showToast('Please enter the 6-digit code', 'warning');
+        return;
+      }
+
+      const btn = document.getElementById('btn-confirm-otp');
+      btn.disabled = true;
+      btn.textContent = 'Activating...';
+
+      try {
+        await Auth.verifyOTP(pendingIdentifier, code, 'REGISTER');
+        Utils.showToast('Account verified successfully!', 'success');
+
+        // Check if Passkeys are supported
+        if (window.Passkeys && Passkeys.isSupported()) {
+          document.getElementById('btn-confirm-otp').classList.add('hidden');
+          document.getElementById('post-verify-passkey-box').classList.remove('hidden');
+        } else {
+          setTimeout(() => window.location.href = 'chat.html', 700);
+        }
+      } catch (err) {
+        Utils.showToast(err.message, 'error');
+        btn.disabled = false;
+        btn.textContent = 'Verify & Activate Account';
+      }
+    });
+
+    // Add passkey post-verification
+    document.getElementById('btn-add-passkey-now').addEventListener('click', async () => {
+      try {
+        await Auth.registerPasskey('My Primary Device');
+        Utils.showToast('Passkey created! Redirecting...', 'success');
+        setTimeout(() => window.location.href = 'chat.html', 600);
+      } catch (err) {
+        Utils.showToast(err.message, 'error');
+      }
+    });
+
+    document.getElementById('btn-skip-passkey').addEventListener('click', () => {
+      window.location.href = 'chat.html';
     });
   </script>
 </body>

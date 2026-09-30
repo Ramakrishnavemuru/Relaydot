@@ -17,37 +17,100 @@ const Auth = {
     return !!API.getToken();
   },
 
-  login: async (usernameOrEmail, password) => {
+  // 1. Password Login
+  login: async (identifier, password) => {
     const data = await API.post('/auth/login', {
-      username_or_email: usernameOrEmail,
+      username_or_email: identifier,
       password: password
     });
 
+    if (data.requires_2fa) {
+      return {
+        requires_2fa: true,
+        ticket: data.ticket,
+        methods: data.methods || ['totp', 'recovery_code', 'passkey']
+      };
+    }
+
     if (data.access_token) {
       API.setToken(data.access_token);
+      if (data.refresh_token) API.setRefreshToken(data.refresh_token);
       Auth.setCurrentUser(data.user);
-      return data.user;
+      return { user: data.user };
     }
-    throw new Error('Failed to retrieve authentication token.');
+    throw new Error('Authentication failed.');
   },
 
-  register: async (username, email, password, confirmPassword, displayName) => {
-    const data = await API.post('/auth/register', {
-      username,
-      email,
-      password,
-      confirm_password: confirmPassword,
-      display_name: displayName || username
+  // 2. Complete 2FA Login Challenge (TOTP code or Recovery Code)
+  verify2FA: async (ticket, code) => {
+    const data = await API.post('/auth/2fa/verify', {
+      ticket,
+      code
     });
 
     if (data.access_token) {
       API.setToken(data.access_token);
+      if (data.refresh_token) API.setRefreshToken(data.refresh_token);
       Auth.setCurrentUser(data.user);
       return data.user;
     }
-    throw new Error('Failed to register user.');
+    throw new Error('2FA verification failed.');
   },
 
+  // 3. OTP Authentication (Email or Phone number)
+  sendOTP: async (identifier, purpose = 'LOGIN') => {
+    return await API.post('/auth/otp/send', {
+      identifier,
+      purpose
+    });
+  },
+
+  verifyOTP: async (identifier, otpCode, purpose = 'LOGIN') => {
+    const data = await API.post('/auth/otp/verify', {
+      identifier,
+      otp_code: otpCode,
+      purpose
+    });
+
+    if (data.requires_2fa) {
+      return {
+        requires_2fa: true,
+        ticket: data.ticket,
+        methods: data.methods
+      };
+    }
+
+    if (data.access_token) {
+      API.setToken(data.access_token);
+      if (data.refresh_token) API.setRefreshToken(data.refresh_token);
+      Auth.setCurrentUser(data.user);
+      return { user: data.user };
+    }
+    return data;
+  },
+
+  // 4. Passkey Login (WebAuthn / Biometrics)
+  loginWithPasskey: async (identifier = null) => {
+    if (!window.Passkeys) {
+      throw new Error('Passkeys module not loaded.');
+    }
+    const data = await Passkeys.login(identifier);
+    return data;
+  },
+
+  // 5. Account Registration
+  register: async (payload) => {
+    const data = await API.post('/auth/register', payload);
+
+    if (data.access_token) {
+      API.setToken(data.access_token);
+      if (data.refresh_token) API.setRefreshToken(data.refresh_token);
+      Auth.setCurrentUser(data.user);
+    }
+    return data;
+  },
+
+  // 6. Logout
   logout: async () => {
     try {
       if (Auth.isAuthenticated()) {
@@ -57,6 +120,7 @@ const Auth = {
       console.warn('Logout API call error:', e);
     } finally {
       API.removeToken();
+      API.removeRefreshToken();
       localStorage.removeItem(CONFIG.USER_KEY);
       if (window.WSClient) {
         WSClient.disconnect();
@@ -65,6 +129,49 @@ const Auth = {
     }
   },
 
+  // 7. Active Sessions & Devices Management
+  fetchSessions: async () => {
+    return await API.get('/auth/sessions');
+  },
+
+  revokeSession: async (sessionId) => {
+    return await API.delete(`/auth/sessions/${sessionId}`);
+  },
+
+  revokeOtherSessions: async () => {
+    return await API.post('/auth/sessions/revoke-others');
+  },
+
+  // 8. Two-Factor Authentication Management
+  setup2FA: async () => {
+    return await API.post('/auth/2fa/totp/setup');
+  },
+
+  enable2FA: async (code) => {
+    return await API.post('/auth/2fa/totp/enable', { code });
+  },
+
+  disable2FA: async (code = null, password = null) => {
+    return await API.post('/auth/2fa/totp/disable', { code, password });
+  },
+
+  // 9. Passkey Management
+  registerPasskey: async (name = 'My Device Passkey') => {
+    if (!window.Passkeys) {
+      throw new Error('Passkeys module not loaded.');
+    }
+    return await Passkeys.register(name);
+  },
+
+  listPasskeys: async () => {
+    return await API.get('/auth/passkeys');
+  },
+
+  deletePasskey: async (passkeyId) => {
+    return await API.delete(`/auth/passkeys/${passkeyId}`);
+  },
+
+  // 10. Password & Profile
   changePassword: async (currentPassword, newPassword, confirmNewPassword) => {
     return await API.post('/auth/change-password', {
       current_password: currentPassword,

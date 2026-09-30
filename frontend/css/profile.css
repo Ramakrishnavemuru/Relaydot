@@ -196,3 +196,102 @@ input:checked + .slider:before {
 .member-check-item:hover {
   background: var(--bg-tertiary);
 }
+
+/* Security Sections & Active Sessions */
+.security-card {
+  background: var(--bg-subtle, #f8fafc);
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  border-radius: var(--radius-md, 8px);
+  padding: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.security-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.security-card-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.security-badge {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 9999px;
+  font-weight: 500;
+}
+.security-badge.active {
+  background: #dcfce7;
+  color: #15803d;
+}
+.security-badge.inactive {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.session-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.65rem 0.75rem;
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+}
+
+.session-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.session-icon {
+  font-size: 1.5rem;
+}
+
+.session-device-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.session-current-tag {
+  font-size: 0.6875rem;
+  background: #e0e7ff;
+  color: #4338ca;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+}
+
+.session-meta {
+  font-size: 0.75rem;
+  color: var(--text-muted, #94a3b8);
+}
+
+.recovery-codes-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.recovery-code-badge {
+  background: var(--bg-hover, #f1f5f9);
+  padding: 0.4rem;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.875rem;
+  text-align: center;
+  letter-spacing: 0.05rem;
+  border: 1px solid var(--border-subtle, #e2e8f0);
+}

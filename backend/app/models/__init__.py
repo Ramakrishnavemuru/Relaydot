@@ -6,6 +6,10 @@ from app.models.reaction import MessageReaction
 from app.models.block import BlockedUser
 from app.models.story import Story
 from app.models.story_view import StoryView
+from app.models.session import UserSession
+from app.models.otp import OTPVerification
+from app.models.passkey import Passkey
+from app.models.recovery_code import RecoveryCode
 
 __all__ = [
     "User",
@@ -17,5 +21,9 @@ __all__ = [
     "MessageReaction",
     "BlockedUser",
     "Story",
-    "StoryView"
+    "StoryView",
+    "UserSession",
+    "OTPVerification",
+    "Passkey",
+    "RecoveryCode"
 ]

@@ -12,17 +12,28 @@ const Utils = {
     return div.innerHTML;
   },
 
+// Parse ISO datetime strings ensuring UTC interpretation
+  parseDate: (isoString) => {
+    if (!isoString) return new Date();
+    let str = String(isoString).trim();
+    // Append Z if no timezone info
+    if (!str.endsWith('Z') && !/[+-]\d{2}:\d{2}$/.test(str)) {
+      str += 'Z';
+    }
+    return new Date(str);
+  },
+
   // Format timestamp for chat messages (e.g., 10:42 AM)
   formatMessageTime: (isoString) => {
     if (!isoString) return '';
-    const date = new Date(isoString);
+    const date = Utils.parseDate(isoString);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   },
 
   // Format date header for message separators
   formatDateHeader: (isoString) => {
     if (!isoString) return '';
-    const date = new Date(isoString);
+    const date = Utils.parseDate(isoString);
     const today = new Date();
     const yesterday = new Date();
     yesterday.setDate(today.getDate() - 1);
@@ -36,8 +47,7 @@ const Utils = {
   formatLastSeen: (isOnline, lastSeenIso) => {
     if (isOnline) return 'Online';
     if (!lastSeenIso) return 'Offline';
-    
-    const date = new Date(lastSeenIso);
+    const date = Utils.parseDate(lastSeenIso);
     const diffSec = Math.floor((Date.now() - date.getTime()) / 1000);
     if (diffSec < 60) return 'Last seen just now';
     const diffMin = Math.floor(diffSec / 60);

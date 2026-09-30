@@ -1181,7 +1181,282 @@ document.addEventListener('DOMContentLoaded', () => {
       Utils.showToast('Notification preferences saved!', 'success');
     };
 
-    // Change Password
+    // --- Security Settings: Sessions, 2FA, Passkeys, Password ---
+
+    // 1. Load and Render Active Sessions
+    const loadSessions = async () => {
+      const container = Utils.$('#sessions-list-container');
+      if (!container) return;
+      try {
+        const sessions = await Auth.fetchSessions();
+        if (!sessions || sessions.length === 0) {
+          container.innerHTML = '<div style="font-size: 0.8125rem; color: var(--text-muted); text-align: center; padding: 0.5rem;">No active sessions found.</div>';
+          return;
+        }
+
+        container.innerHTML = '';
+        sessions.forEach(s => {
+          const item = document.createElement('div');
+          item.className = 'session-item';
+          const isPhone = s.device_name && (s.device_name.includes('iPhone') || s.device_name.includes('Android') || s.device_name.includes('iPad'));
+          const icon = isPhone ? '📱' : '💻';
+          const lastActiveStr = Utils.formatLastSeen(false, s.last_active);
+
+          item.innerHTML = `
+            <div class="session-info">
+              <span class="session-icon">${icon}</span>
+              <div>
+                <div class="session-device-name">
+                  ${Utils.escapeHTML(s.device_name || 'Device')}
+                  ${s.is_current ? '<span class="session-current-tag">This device</span>' : ''}
+                </div>
+                <div class="session-meta">
+                  ${s.ip_address || 'Unknown IP'} • ${lastActiveStr}
+                </div>
+              </div>
+            </div>
+            <div>
+              ${s.is_current 
+                ? '<span style="font-size: 0.75rem; color: #16a34a; font-weight: 500;">Active</span>' 
+                : `<button class="btn btn-sm btn-secondary btn-terminate-session" data-id="${s.session_id}" style="color: #ef4444; font-size: 0.75rem;">Logout</button>`
+              }
+            </div>
+          `;
+          container.appendChild(item);
+        });
+
+        // Bind individual session logout
+        container.querySelectorAll('.btn-terminate-session').forEach(btn => {
+          btn.onclick = async () => {
+            const sid = btn.dataset.id;
+            try {
+              await Auth.revokeSession(sid);
+              Utils.showToast('Device session logged out', 'info');
+              loadSessions();
+            } catch (err) {
+              Utils.showToast(err.message, 'error');
+            }
+          };
+        });
+      } catch (err) {
+        container.innerHTML = `<div style="font-size: 0.8125rem; color: #ef4444; text-align: center;">Failed to load sessions: ${err.message}</div>`;
+      }
+    };
+
+    // Terminate all other sessions
+    const btnTerminateOthers = Utils.$('#btn-terminate-other-sessions');
+    if (btnTerminateOthers) {
+      btnTerminateOthers.onclick = async () => {
+        if (!confirm('Log out from all other devices?')) return;
+        try {
+          const res = await Auth.revokeOtherSessions();
+          Utils.showToast(res.message, 'success');
+          loadSessions();
+        } catch (err) {
+          Utils.showToast(err.message, 'error');
+        }
+      };
+    }
+
+    // 2. 2FA Status & Controls
+    let cachedRecoveryCodes = [];
+    const load2FA = async () => {
+      try {
+        const user = await Auth.fetchMyProfile();
+        const badge = Utils.$('#twofa-status-badge');
+        const btnOpenSetup = Utils.$('#btn-open-2fa-setup');
+        const btnDisable = Utils.$('#btn-disable-2fa');
+
+        if (user.totp_enabled) {
+          badge.textContent = 'Active';
+          badge.className = 'security-badge active';
+          btnOpenSetup.textContent = 'Reconfigure 2FA';
+          btnDisable.classList.remove('hidden');
+        } else {
+          badge.textContent = 'Disabled';
+          badge.className = 'security-badge inactive';
+          btnOpenSetup.textContent = 'Enable 2FA';
+          btnDisable.classList.add('hidden');
+        }
+      } catch (e) {}
+    };
+
+    // Open 2FA Setup
+    const btnOpen2FA = Utils.$('#btn-open-2fa-setup');
+    if (btnOpen2FA) {
+      btnOpen2FA.onclick = async () => {
+        try {
+          const res = await Auth.setup2FA();
+          Utils.$('#setup-2fa-qr').src = res.qr_code;
+          Utils.$('#setup-2fa-secret').textContent = res.secret;
+          Utils.$('#setup-2fa-code').value = '';
+          Utils.$('#setup-2fa-step-1').classList.remove('hidden');
+          Utils.$('#setup-2fa-step-2').classList.add('hidden');
+          Utils.openModal('modal-2fa-setup');
+        } catch (err) {
+          Utils.showToast(err.message, 'error');
+        }
+      };
+    }
+
+    // Confirm & Enable 2FA
+    const btnConfirm2FA = Utils.$('#btn-confirm-enable-2fa');
+    if (btnConfirm2FA) {
+      btnConfirm2FA.onclick = async () => {
+        const code = Utils.$('#setup-2fa-code').value.trim();
+        if (!code) {
+          Utils.showToast('Please enter the 6-digit code', 'warning');
+          return;
+        }
+        btnConfirm2FA.disabled = true;
+        btnConfirm2FA.textContent = 'Verifying...';
+        try {
+          const res = await Auth.enable2FA(code);
+          cachedRecoveryCodes = res.recovery_codes || [];
+          
+          // Render recovery codes in grid
+          const grid = Utils.$('#setup-recovery-codes-grid');
+          grid.innerHTML = '';
+          cachedRecoveryCodes.forEach(rc => {
+            const badge = document.createElement('div');
+            badge.className = 'recovery-code-badge';
+            badge.textContent = rc;
+            grid.appendChild(badge);
+          });
+
+          Utils.$('#setup-2fa-step-1').classList.add('hidden');
+          Utils.$('#setup-2fa-step-2').classList.remove('hidden');
+          load2FA();
+          Utils.showToast('Two-factor authentication enabled!', 'success');
+        } catch (err) {
+          Utils.showToast(err.message, 'error');
+        } finally {
+          btnConfirm2FA.disabled = false;
+          btnConfirm2FA.textContent = 'Verify & Activate 2FA';
+        }
+      };
+    }
+
+    // Copy recovery codes
+    const btnCopyCodes = Utils.$('#btn-copy-recovery-codes');
+    if (btnCopyCodes) {
+      btnCopyCodes.onclick = () => {
+        if (cachedRecoveryCodes.length > 0) {
+          navigator.clipboard.writeText(cachedRecoveryCodes.join('\n'));
+          Utils.showToast('Recovery codes copied to clipboard!', 'info');
+        }
+      };
+    }
+
+    const btnFinish2FA = Utils.$('#btn-finish-2fa');
+    if (btnFinish2FA) {
+      btnFinish2FA.onclick = () => {
+        Utils.closeModal('modal-2fa-setup');
+      };
+    }
+
+    // Disable 2FA
+    const btnDisable2FA = Utils.$('#btn-disable-2fa');
+    if (btnDisable2FA) {
+      btnDisable2FA.onclick = async () => {
+        const code = prompt('Enter a code from your authenticator app or account password to disable 2FA:');
+        if (!code) return;
+        try {
+          await Auth.disable2FA(code.length === 6 && !isNaN(code) ? code : null, code);
+          Utils.showToast('Two-factor authentication disabled', 'info');
+          load2FA();
+        } catch (err) {
+          Utils.showToast(err.message, 'error');
+        }
+      };
+    }
+
+    // 3. Passkeys Management
+    const loadPasskeys = async () => {
+      const container = Utils.$('#passkeys-list-container');
+      if (!container) return;
+      try {
+        const keys = await Auth.listPasskeys();
+        if (!keys || keys.length === 0) {
+          container.innerHTML = '<div style="font-size: 0.8125rem; color: var(--text-muted); text-align: center; padding: 0.5rem;">No passkeys registered yet.</div>';
+          return;
+        }
+
+        container.innerHTML = '';
+        keys.forEach(k => {
+          const item = document.createElement('div');
+          item.className = 'session-item';
+          item.innerHTML = `
+            <div class="session-info">
+              <span class="session-icon">🔑</span>
+              <div>
+                <div class="session-device-name">${Utils.escapeHTML(k.name || 'Passkey')}</div>
+                <div class="session-meta">Created ${Utils.formatLastSeen(false, k.created_at)}</div>
+              </div>
+            </div>
+            <button class="btn btn-sm btn-secondary btn-del-passkey" data-id="${k.id}" style="color: #ef4444; font-size: 0.75rem;">Remove</button>
+          `;
+          container.appendChild(item);
+        });
+
+        container.querySelectorAll('.btn-del-passkey').forEach(btn => {
+          btn.onclick = async () => {
+            if (!confirm('Remove this passkey?')) return;
+            try {
+              await Auth.deletePasskey(btn.dataset.id);
+              Utils.showToast('Passkey removed', 'info');
+              loadPasskeys();
+            } catch (err) {
+              Utils.showToast(err.message, 'error');
+            }
+          };
+        });
+      } catch (err) {
+        container.innerHTML = `<div style="font-size: 0.8125rem; color: #ef4444; text-align: center;">Failed to load passkeys: ${err.message}</div>`;
+      }
+    };
+
+    // Open add passkey modal
+    const btnOpenAddPasskey = Utils.$('#btn-open-add-passkey');
+    if (btnOpenAddPasskey) {
+      btnOpenAddPasskey.onclick = () => {
+        Utils.$('#input-passkey-name').value = '';
+        Utils.openModal('modal-add-passkey');
+      };
+    }
+
+    const btnCreatePasskeySubmit = Utils.$('#btn-create-passkey-submit');
+    if (btnCreatePasskeySubmit) {
+      btnCreatePasskeySubmit.onclick = async () => {
+        const name = Utils.$('#input-passkey-name').value.trim() || 'My Device Passkey';
+        btnCreatePasskeySubmit.disabled = true;
+        btnCreatePasskeySubmit.textContent = 'Awaiting Biometrics...';
+        try {
+          await Auth.registerPasskey(name);
+          Utils.showToast('Passkey registered successfully!', 'success');
+          Utils.closeModal('modal-add-passkey');
+          loadPasskeys();
+        } catch (err) {
+          Utils.showToast(err.message, 'error');
+        } finally {
+          btnCreatePasskeySubmit.disabled = false;
+          btnCreatePasskeySubmit.textContent = 'Continue with Biometrics / Key';
+        }
+      };
+    }
+
+    // Refresh security tab contents when opened
+    Utils.$$('.settings-tab-btn').forEach(b => {
+      b.addEventListener('click', () => {
+        if (b.dataset.tab === 'security') {
+          loadSessions();
+          load2FA();
+          loadPasskeys();
+        }
+      });
+    });
+
+    // 4. Change Password
     Utils.$('#btn-save-password').onclick = async () => {
       const curPwd = Utils.$('#settings-cur-password').value;
       const newPwd = Utils.$('#settings-new-password').value;

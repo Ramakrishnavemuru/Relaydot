@@ -26,6 +26,31 @@ def validate_email(email: str) -> str:
     return email
 
 
+PHONE_REGEX = re.compile(r"^\+?[1-9]\d{6,14}$")
+
+
+def validate_phone_number(phone: str) -> str:
+    """Validate and clean phone number into normalized E.164-like string."""
+    cleaned = re.sub(r"[\s\-\(\)]", "", phone.strip())
+    if not PHONE_REGEX.match(cleaned):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid phone number format. Please provide a valid international or national phone number (e.g. +14155552671)."
+        )
+    return cleaned
+
+
+def detect_identifier_type(identifier: str) -> str:
+    """Determine whether identifier is email, phone, or username."""
+    identifier = identifier.strip()
+    if "@" in identifier:
+        return "email"
+    cleaned_phone = re.sub(r"[\s\-\(\)]", "", identifier)
+    if cleaned_phone.startswith("+") or (cleaned_phone.isdigit() and len(cleaned_phone) >= 7):
+        return "phone"
+    return "username"
+
+
 def validate_password(password: str) -> str:
     if len(password) < 6:
         raise HTTPException(

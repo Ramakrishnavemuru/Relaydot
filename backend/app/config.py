@@ -12,10 +12,21 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     API_V1_PREFIX: str = "/api"
 
-    # Security & JWT
+    # Security & Tokens
     SECRET_KEY: str = "super-secret-jwt-key-for-realtime-chat-app-2026"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15  # 15 minutes short-lived
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 30    # 30 days long-lived
+    OTP_EXPIRE_MINUTES: int = 10
+
+    # Cookie settings
+    COOKIE_SECURE: bool = False
+    COOKIE_SAMESITE: str = "lax"
+
+    # WebAuthn / Passkeys
+    RP_ID: str = "localhost"
+    RP_NAME: str = "Real-Time Chat App"
+    RP_ORIGIN: str = "http://localhost:8000"
 
     # Database
     DATABASE_URL: str = f"sqlite:///{BASE_DIR}/chat.db"
