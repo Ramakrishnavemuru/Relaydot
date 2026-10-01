@@ -1,44 +1,33 @@
-// ============================================================
-// Relay — Real-Time Call Controller
-// Voice & Video Calls
-// ============================================================
+// ================================================================
+// REAL-TIME CALL CONTROLLER
+// Voice + Video Calls
+// ================================================================
 
 const Calls = {
-
-  // ==========================================================
-  // STATE
-  // ==========================================================
-
   activeCall: null,
 
   callTimer: null,
-
   callSeconds: 0,
 
   ringtoneInterval: null,
 
   isAudioMuted: false,
-
   isVideoMuted: false,
 
   // UI Elements cache
   elements: {},
 
-
-  // ==========================================================
+  // ==============================================================
   // INITIALIZATION
-  // ==========================================================
+  // ==============================================================
 
   init() {
-
     console.log('[Calls] Initializing call controller...');
 
-
     this.elements = {
-
-      // --------------------------------------------------------
+      // ------------------------------------------------------------
       // Incoming Call Banner
-      // --------------------------------------------------------
+      // ------------------------------------------------------------
 
       incomingOverlay:
         Utils.$('#incoming-call-overlay'),
@@ -59,9 +48,9 @@ const Calls = {
         Utils.$('#btn-decline-call'),
 
 
-      // --------------------------------------------------------
+      // ------------------------------------------------------------
       // Call Modal
-      // --------------------------------------------------------
+      // ------------------------------------------------------------
 
       callModal:
         Utils.$('#call-modal-overlay'),
@@ -87,15 +76,15 @@ const Calls = {
       localVideo:
         Utils.$('#local-video-el'),
 
-      // NEW:
-      // Dedicated remote audio element
+      // IMPORTANT:
+      // Remote audio element.
       remoteAudio:
         Utils.$('#remote-audio-el'),
 
 
-      // --------------------------------------------------------
+      // ------------------------------------------------------------
       // Call Controls
-      // --------------------------------------------------------
+      // ------------------------------------------------------------
 
       btnMuteMic:
         Utils.$('#btn-call-mute-mic'),
@@ -110,236 +99,258 @@ const Calls = {
         Utils.$('#btn-call-end')
     };
 
-
-    // ----------------------------------------------------------
-    // Load WebRTC configuration
-    // ----------------------------------------------------------
-
-    webrtc.initConfig();
-
-
-    // ----------------------------------------------------------
-    // Bind signaling events
-    // ----------------------------------------------------------
+    // Load STUN/TURN configuration.
+    // We intentionally don't block the UI initialization.
+    webrtc
+      .initConfig()
+      .catch(error => {
+        console.warn(
+          '[Calls] WebRTC config initialization failed:',
+          error
+        );
+      });
 
     this.bindSocketEvents();
-
-
-    // ----------------------------------------------------------
-    // Bind UI
-    // ----------------------------------------------------------
-
     this.bindUI();
 
-
-    // ----------------------------------------------------------
-    // WebRTC remote stream callback
-    // ----------------------------------------------------------
-
-    this.setupWebRTCCallbacks();
-
-
-    console.log(
-      '[Calls] Call controller initialized.'
-    );
+    console.log('[Calls] Call controller initialized');
   },
 
 
-  // ==========================================================
-  // WEBRTC CALLBACKS
-  // ==========================================================
+  // ==============================================================
+  // SOCKET EVENTS
+  // ==============================================================
 
-  setupWebRTCCallbacks() {
+  bindSocketEvents() {
 
-    // --------------------------------------------------------
-    // Remote media stream
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
+    // 1. Incoming Call Invite
+    // ------------------------------------------------------------
+
+    WSClient.on('call_invite', (data) => {
+      console.log(
+        '[Calls] Incoming call invite:',
+        data
+      );
+
+      this.handleIncomingInvite(data);
+    });
+
+
+    // ------------------------------------------------------------
+    // 2. Callee Accepted Call
+    // ------------------------------------------------------------
+
+    WSClient.on('call_accept', async (data) => {
+      console.log(
+        '[Calls] Call accepted:',
+        data
+      );
+
+      await this.handleCallAccepted(data);
+    });
+
+
+    // ------------------------------------------------------------
+    // 3. Callee Rejected Call
+    // ------------------------------------------------------------
+
+    WSClient.on('call_reject', (data) => {
+      console.log(
+        '[Calls] Call rejected:',
+        data
+      );
+
+      this.handleCallRejected(data);
+    });
+
+
+    // ------------------------------------------------------------
+    // 4. WebRTC Offer
+    // ------------------------------------------------------------
+
+    WSClient.on('webrtc_offer', async (data) => {
+      console.log(
+        '[Calls] WebRTC offer received'
+      );
+
+      await this.handleWebRtcOffer(data);
+    });
+
+
+    // ------------------------------------------------------------
+    // 5. WebRTC Answer
+    // ------------------------------------------------------------
+
+    WSClient.on('webrtc_answer', async (data) => {
+      console.log(
+        '[Calls] WebRTC answer received'
+      );
+
+      await this.handleWebRtcAnswer(data);
+    });
+
+
+    // ------------------------------------------------------------
+    // 6. ICE Candidate
+    // ------------------------------------------------------------
+
+    WSClient.on('ice_candidate', async (data) => {
+      if (!data || !data.candidate) {
+        return;
+      }
+
+      console.log(
+        '[Calls] Remote ICE candidate received'
+      );
+
+      await webrtc.addIceCandidate(
+        data.candidate
+      );
+    });
+
+
+    // ------------------------------------------------------------
+    // 7. Call End
+    // ------------------------------------------------------------
+
+    WSClient.on('call_end', () => {
+      console.log(
+        '[Calls] Peer ended the call'
+      );
+
+      Utils.showToast(
+        'Call ended by peer',
+        'info'
+      );
+
+      this.endCall(false);
+    });
+
+
+    // ============================================================
+    // WEBRTC CALLBACKS
+    // ============================================================
+
+
+    // ------------------------------------------------------------
+    // Remote Stream Callback
+    // ------------------------------------------------------------
 
     webrtc.onRemoteStreamCallback =
-      async (remoteStream) => {
+      (remoteStream) => {
 
         console.log(
           '[Calls] Remote stream received:',
-          {
-            audioTracks:
-              remoteStream.getAudioTracks().length,
+          remoteStream
+        );
 
-            videoTracks:
-              remoteStream.getVideoTracks().length
-          }
+        const tracks =
+          remoteStream.getTracks();
+
+        console.log(
+          '[Calls] Remote tracks:',
+          tracks.map(track => ({
+            kind: track.kind,
+            id: track.id,
+            readyState: track.readyState
+          }))
         );
 
 
-        // ====================================================
-        // REMOTE VIDEO
-        // ====================================================
+        // --------------------------------------------------------
+        // Remote Video
+        // --------------------------------------------------------
 
         if (this.elements.remoteVideo) {
 
-          const videoTracks =
-            remoteStream.getVideoTracks();
+          this.elements.remoteVideo.srcObject =
+            remoteStream;
 
+          this.elements.remoteVideo.autoplay =
+            true;
 
-          if (videoTracks.length > 0) {
+          this.elements.remoteVideo.playsInline =
+            true;
 
-            console.log(
-              '[Calls] Attaching remote stream to video element.'
-            );
+          this.elements.remoteVideo.muted =
+            false;
 
-
-            this.elements.remoteVideo.srcObject =
-              remoteStream;
-
-
-            this.elements.remoteVideo.muted =
-              false;
-
-
-            try {
-
-              await this.elements.remoteVideo.play();
-
+          this.elements.remoteVideo.play()
+            .then(() => {
               console.log(
-                '[Calls] Remote video playback started.'
+                '[Calls] Remote video playback started'
               );
-
-            } catch (err) {
-
+            })
+            .catch(error => {
               console.warn(
-                '[Calls] Remote video autoplay failed:',
-                err
+                '[Calls] Remote video autoplay blocked:',
+                error
               );
-
-            }
-
-          } else {
-
-            console.log(
-              '[Calls] Remote stream currently has no video track.'
-            );
-          }
+            });
         }
 
 
-        // ====================================================
-        // REMOTE AUDIO
-        // ====================================================
+        // --------------------------------------------------------
+        // Remote Audio
+        // --------------------------------------------------------
 
         if (this.elements.remoteAudio) {
 
-          const audioTracks =
-            remoteStream.getAudioTracks();
+          this.elements.remoteAudio.srcObject =
+            remoteStream;
 
+          this.elements.remoteAudio.autoplay =
+            true;
 
-          if (audioTracks.length > 0) {
+          this.elements.remoteAudio.playsInline =
+            true;
 
-            console.log(
-              '[Calls] Attaching remote stream to audio element.'
-            );
+          // IMPORTANT:
+          // Never mute remote audio.
+          this.elements.remoteAudio.muted =
+            false;
 
+          this.elements.remoteAudio.volume =
+            1.0;
 
-            this.elements.remoteAudio.srcObject =
-              remoteStream;
-
-
-            // Make sure remote audio isn't muted.
-            this.elements.remoteAudio.muted =
-              false;
-
-
-            this.elements.remoteAudio.volume =
-              1.0;
-
-
-            try {
-
-              await this.elements.remoteAudio.play();
-
+          this.elements.remoteAudio.play()
+            .then(() => {
               console.log(
-                '[Calls] Remote audio playback started.'
+                '[Calls] Remote audio playback started'
               );
-
-            } catch (err) {
+            })
+            .catch(error => {
 
               console.warn(
-                '[Calls] Remote audio autoplay failed:',
-                err
+                '[Calls] Remote audio autoplay blocked:',
+                error
               );
 
-
-              // ------------------------------------------------
-              // Browser autoplay can block playback.
-              // Since the call was initiated through a user
-              // action, retry on next interaction.
-              // ------------------------------------------------
-
               this.enableAudioPlaybackRetry();
-
-            }
-
-          } else {
-
-            console.log(
-              '[Calls] Remote stream currently has no audio track.'
-            );
-          }
+            });
         }
-
-
-        // ------------------------------------------------------
-        // Debug information
-        // ------------------------------------------------------
-
-        console.log(
-          '[Calls] Remote audio tracks:',
-          remoteStream
-            .getAudioTracks()
-            .map(track => ({
-              id: track.id,
-              label: track.label,
-              enabled: track.enabled,
-              muted: track.muted,
-              readyState: track.readyState
-            }))
-        );
-
-
-        console.log(
-          '[Calls] Remote video tracks:',
-          remoteStream
-            .getVideoTracks()
-            .map(track => ({
-              id: track.id,
-              label: track.label,
-              enabled: track.enabled,
-              muted: track.muted,
-              readyState: track.readyState
-            }))
-        );
       };
 
 
-    // --------------------------------------------------------
-    // Local ICE candidate
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
+    // Local ICE Candidate Callback
+    // ------------------------------------------------------------
 
     webrtc.onIceCandidateCallback =
       (candidate) => {
 
         if (!this.activeCall) {
-
           console.warn(
-            '[Calls] Cannot send ICE candidate: no active call.'
+            '[Calls] Received ICE candidate without active call'
           );
 
           return;
         }
 
-
         console.log(
-          '[Calls] Sending ICE candidate to peer.'
+          '[Calls] Sending local ICE candidate'
         );
-
 
         WSClient.send(
           'ice_candidate',
@@ -354,9 +365,9 @@ const Calls = {
       };
 
 
-    // --------------------------------------------------------
-    // WebRTC connection state
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
+    // WebRTC Connection State
+    // ------------------------------------------------------------
 
     webrtc.onConnectionStateChangeCallback =
       (state) => {
@@ -366,587 +377,372 @@ const Calls = {
           state
         );
 
-
-        switch (state) {
-
-          case 'connected':
-
-            this.stopRingtone();
-
-            this.updateCallStatus(
-              'Connected'
-            );
-
-            console.log(
-              '[Calls] WebRTC connection established.'
-            );
-
-            break;
+        if (!this.activeCall) {
+          return;
+        }
 
 
-          case 'connecting':
+        // --------------------------------------------------------
+        // Connecting
+        // --------------------------------------------------------
 
-            this.updateCallStatus(
-              'Connecting...'
-            );
-
-            break;
-
-
-          case 'disconnected':
-
-            console.warn(
-              '[Calls] WebRTC connection disconnected.'
-            );
-
-            this.updateCallStatus(
-              'Connection interrupted...'
-            );
-
-            break;
+        if (state === 'new') {
+          this.updateCallStatus(
+            'Connecting...'
+          );
+        }
 
 
-          case 'failed':
-
-            console.error(
-              '[Calls] WebRTC connection failed.'
-            );
-
-            this.updateCallStatus(
-              'Connection failed'
-            );
-
-            Utils.showToast(
-              'Unable to establish the call connection.',
-              'error'
-            );
-
-            break;
+        if (state === 'connecting') {
+          this.updateCallStatus(
+            'Connecting...'
+          );
+        }
 
 
-          case 'closed':
+        // --------------------------------------------------------
+        // CONNECTED
+        // --------------------------------------------------------
 
-            console.log(
-              '[Calls] WebRTC connection closed.'
-            );
+        if (state === 'connected') {
 
-            break;
+          console.log(
+            '[Calls] ================================='
+          );
+
+          console.log(
+            '[Calls] 🎉 CALL CONNECTED'
+          );
+
+          console.log(
+            '[Calls] ================================='
+          );
+
+          if (!this.callTimer) {
+            this.startDurationTimer();
+          }
+
+          Utils.showToast(
+            'Call connected',
+            'success'
+          );
+        }
+
+
+        // --------------------------------------------------------
+        // DISCONNECTED
+        // --------------------------------------------------------
+
+        if (state === 'disconnected') {
+
+          console.warn(
+            '[Calls] WebRTC temporarily disconnected'
+          );
+
+          this.updateCallStatus(
+            'Reconnecting...'
+          );
+        }
+
+
+        // --------------------------------------------------------
+        // FAILED
+        // --------------------------------------------------------
+
+        if (state === 'failed') {
+
+          console.error(
+            '[Calls] ================================='
+          );
+
+          console.error(
+            '[Calls] ❌ WEBRTC CONNECTION FAILED'
+          );
+
+          console.error(
+            '[Calls] ================================='
+          );
+
+          this.updateCallStatus(
+            'Connection failed'
+          );
+
+          Utils.showToast(
+            'Could not establish the call connection.',
+            'error'
+          );
+        }
+
+
+        // --------------------------------------------------------
+        // CLOSED
+        // --------------------------------------------------------
+
+        if (state === 'closed') {
+
+          console.log(
+            '[Calls] WebRTC connection closed'
+          );
         }
       };
 
 
-    // --------------------------------------------------------
-    // ICE connection state
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
+    // ICE Connection State
+    // ------------------------------------------------------------
 
     webrtc.onIceConnectionStateChangeCallback =
       (state) => {
 
         console.log(
-          '[Calls] ICE connection state:',
+          '[Calls] WebRTC ICE state:',
           state
         );
 
+        if (!this.activeCall) {
+          return;
+        }
 
-        if (state === 'connected' ||
-            state === 'completed') {
 
-          console.log(
-            '[Calls] ICE connection established.'
+        if (state === 'new') {
+
+          this.updateCallStatus(
+            'Connecting...'
           );
-
         }
 
 
         if (state === 'checking') {
 
+          console.log(
+            '[Calls] ICE checking candidates...'
+          );
+
           this.updateCallStatus(
             'Connecting...'
           );
+        }
 
+
+        if (
+          state === 'connected' ||
+          state === 'completed'
+        ) {
+
+          console.log(
+            '[Calls] 🎉 ICE connection established'
+          );
+
+          if (!this.callTimer) {
+            this.startDurationTimer();
+          }
+        }
+
+
+        if (state === 'disconnected') {
+
+          console.warn(
+            '[Calls] ICE disconnected'
+          );
+
+          this.updateCallStatus(
+            'Reconnecting...'
+          );
         }
 
 
         if (state === 'failed') {
 
           console.error(
-            '[Calls] ICE connection failed. TURN may be required.'
+            '[Calls] ❌ ICE CONNECTION FAILED'
           );
 
-        }
-      };
+          console.error(
+            '[Calls] A TURN server may be required.'
+          );
 
-
-    // --------------------------------------------------------
-    // ICE gathering state
-    // --------------------------------------------------------
-
-    webrtc.onIceGatheringStateChangeCallback =
-      (state) => {
-
-        console.log(
-          '[Calls] ICE gathering state:',
-          state
-        );
-      };
-  },
-
-
-  // ==========================================================
-  // AUTOPLAY RETRY
-  // ==========================================================
-
-  enableAudioPlaybackRetry() {
-
-    const retryPlayback =
-      async () => {
-
-        if (
-          !this.elements.remoteAudio ||
-          !this.elements.remoteAudio.srcObject
-        ) {
-
-          return;
+          this.updateCallStatus(
+            'Connection failed'
+          );
         }
 
 
-        try {
-
-          await this.elements.remoteAudio.play();
+        if (state === 'closed') {
 
           console.log(
-            '[Calls] Remote audio playback started after retry.'
+            '[Calls] ICE connection closed'
           );
-
-
-          document.removeEventListener(
-            'click',
-            retryPlayback
-          );
-
-
-          document.removeEventListener(
-            'touchstart',
-            retryPlayback
-          );
-
-
-          document.removeEventListener(
-            'keydown',
-            retryPlayback
-          );
-
-        } catch (err) {
-
-          console.warn(
-            '[Calls] Audio playback retry failed:',
-            err
-          );
-
         }
       };
-
-
-    document.addEventListener(
-      'click',
-      retryPlayback,
-      {
-        once: true
-      }
-    );
-
-
-    document.addEventListener(
-      'touchstart',
-      retryPlayback,
-      {
-        once: true
-      }
-    );
-
-
-    document.addEventListener(
-      'keydown',
-      retryPlayback,
-      {
-        once: true
-      }
-    );
   },
 
 
-  // ==========================================================
-  // SOCKET EVENTS
-  // ==========================================================
-
-  bindSocketEvents() {
-
-    // --------------------------------------------------------
-    // Incoming Call Invite
-    // --------------------------------------------------------
-
-    WSClient.on(
-      'call_invite',
-      (data) => {
-
-        console.log(
-          '[Calls] Incoming call invite:',
-          data
-        );
-
-
-        this.handleIncomingInvite(
-          data
-        );
-      }
-    );
-
-
-    // --------------------------------------------------------
-    // Call Accepted
-    // --------------------------------------------------------
-
-    WSClient.on(
-      'call_accept',
-      async (data) => {
-
-        console.log(
-          '[Calls] Call accepted:',
-          data
-        );
-
-
-        await this.handleCallAccepted(
-          data
-        );
-      }
-    );
-
-
-    // --------------------------------------------------------
-    // Call Rejected
-    // --------------------------------------------------------
-
-    WSClient.on(
-      'call_reject',
-      (data) => {
-
-        console.log(
-          '[Calls] Call rejected:',
-          data
-        );
-
-
-        this.handleCallRejected(
-          data
-        );
-      }
-    );
-
-
-    // --------------------------------------------------------
-    // WebRTC Offer
-    // --------------------------------------------------------
-
-    WSClient.on(
-      'webrtc_offer',
-      async (data) => {
-
-        console.log(
-          '[Calls] WebRTC offer received.'
-        );
-
-
-        await this.handleWebRtcOffer(
-          data
-        );
-      }
-    );
-
-
-    // --------------------------------------------------------
-    // WebRTC Answer
-    // --------------------------------------------------------
-
-    WSClient.on(
-      'webrtc_answer',
-      async (data) => {
-
-        console.log(
-          '[Calls] WebRTC answer received.'
-        );
-
-
-        await this.handleWebRtcAnswer(
-          data
-        );
-      }
-    );
-
-
-    // --------------------------------------------------------
-    // ICE Candidate
-    // --------------------------------------------------------
-
-    WSClient.on(
-      'ice_candidate',
-      async (data) => {
-
-        if (!data || !data.candidate) {
-
-          console.warn(
-            '[Calls] Received ICE event without candidate.'
-          );
-
-          return;
-        }
-
-
-        console.log(
-          '[Calls] Remote ICE candidate received.'
-        );
-
-
-        await webrtc.addIceCandidate(
-          data.candidate
-        );
-      }
-    );
-
-
-    // --------------------------------------------------------
-    // Call End
-    // --------------------------------------------------------
-
-    WSClient.on(
-      'call_end',
-      () => {
-
-        console.log(
-          '[Calls] Peer ended the call.'
-        );
-
-
-        Utils.showToast(
-          'Call ended by peer',
-          'info'
-        );
-
-
-        this.endCall(
-          false
-        );
-      }
-    );
-  },
-
-
-  // ==========================================================
+  // ==============================================================
   // UI EVENTS
-  // ==========================================================
+  // ==============================================================
 
   bindUI() {
 
-    // --------------------------------------------------------
-    // Accept
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
+    // Accept Call
+    // ------------------------------------------------------------
 
     if (this.elements.btnAccept) {
 
-      this.elements.btnAccept.addEventListener(
-        'click',
-        () => {
-
-          this.acceptIncomingCall();
-
-        }
-      );
+      this.elements.btnAccept
+        .addEventListener(
+          'click',
+          () => {
+            this.acceptIncomingCall();
+          }
+        );
     }
 
 
-    // --------------------------------------------------------
-    // Decline
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
+    // Decline Call
+    // ------------------------------------------------------------
 
     if (this.elements.btnDecline) {
 
-      this.elements.btnDecline.addEventListener(
-        'click',
-        () => {
-
-          this.declineIncomingCall();
-
-        }
-      );
+      this.elements.btnDecline
+        .addEventListener(
+          'click',
+          () => {
+            this.declineIncomingCall();
+          }
+        );
     }
 
 
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
     // Microphone
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
 
     if (this.elements.btnMuteMic) {
 
-      this.elements.btnMuteMic.addEventListener(
-        'click',
-        () => {
+      this.elements.btnMuteMic
+        .addEventListener(
+          'click',
+          () => {
 
-          this.isAudioMuted =
-            !this.isAudioMuted;
+            this.isAudioMuted =
+              !this.isAudioMuted;
 
-
-          webrtc.toggleAudio(
-            !this.isAudioMuted
-          );
-
-
-          this.elements.btnMuteMic
-            .classList.toggle(
-              'muted',
-              this.isAudioMuted
+            webrtc.toggleAudio(
+              !this.isAudioMuted
             );
 
+            this.elements.btnMuteMic
+              .classList
+              .toggle(
+                'muted',
+                this.isAudioMuted
+              );
 
-          this.elements.btnMuteMic.innerHTML =
-            this.isAudioMuted
-              ? '🔇'
-              : '🎤';
+            this.elements.btnMuteMic.innerHTML =
+              this.isAudioMuted
+                ? '🔇'
+                : '🎤';
 
-
-          Utils.showToast(
-            this.isAudioMuted
-              ? 'Microphone muted'
-              : 'Microphone unmuted',
-            'info'
-          );
-        }
-      );
+            Utils.showToast(
+              this.isAudioMuted
+                ? 'Microphone muted'
+                : 'Microphone unmuted',
+              'info'
+            );
+          }
+        );
     }
 
 
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
     // Camera
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
 
     if (this.elements.btnToggleCam) {
 
-      this.elements.btnToggleCam.addEventListener(
-        'click',
-        () => {
+      this.elements.btnToggleCam
+        .addEventListener(
+          'click',
+          () => {
 
-          this.isVideoMuted =
-            !this.isVideoMuted;
+            this.isVideoMuted =
+              !this.isVideoMuted;
 
-
-          webrtc.toggleVideo(
-            !this.isVideoMuted
-          );
-
-
-          this.elements.btnToggleCam
-            .classList.toggle(
-              'off',
-              this.isVideoMuted
+            webrtc.toggleVideo(
+              !this.isVideoMuted
             );
 
+            this.elements.btnToggleCam
+              .classList
+              .toggle(
+                'off',
+                this.isVideoMuted
+              );
 
-          this.elements.btnToggleCam.innerHTML =
-            this.isVideoMuted
-              ? '🚫'
-              : '📹';
+            this.elements.btnToggleCam.innerHTML =
+              this.isVideoMuted
+                ? '🚫'
+                : '📹';
 
-
-          Utils.showToast(
-            this.isVideoMuted
-              ? 'Camera disabled'
-              : 'Camera enabled',
-            'info'
-          );
-        }
-      );
+            Utils.showToast(
+              this.isVideoMuted
+                ? 'Camera disabled'
+                : 'Camera enabled',
+              'info'
+            );
+          }
+        );
     }
 
 
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
     // Switch Camera
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
 
     if (this.elements.btnSwitchCam) {
 
-      this.elements.btnSwitchCam.addEventListener(
-        'click',
-        async () => {
+      this.elements.btnSwitchCam
+        .addEventListener(
+          'click',
+          async () => {
 
-          const track =
-            await webrtc.switchCamera();
+            const result =
+              await webrtc.switchCamera();
 
+            if (result) {
 
-          if (track) {
-
-            // Update local preview
-            if (
-              this.elements.localVideo
-            ) {
-
-              this.elements.localVideo.srcObject =
-                webrtc.localStream;
-
-
-              try {
-
-                await this.elements.localVideo.play();
-
-              } catch (e) {
-
-                console.warn(
-                  '[Calls] Local video playback failed:',
-                  e
-                );
-
-              }
+              Utils.showToast(
+                'Camera switched',
+                'info'
+              );
             }
-
-
-            Utils.showToast(
-              'Camera switched',
-              'info'
-            );
-
-          } else {
-
-            Utils.showToast(
-              'Unable to switch camera',
-              'warning'
-            );
           }
-        }
-      );
+        );
     }
 
 
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
     // End Call
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
 
     if (this.elements.btnEndCall) {
 
-      this.elements.btnEndCall.addEventListener(
-        'click',
-        () => {
-
-          this.endCall(
-            true
-          );
-
-        }
-      );
+      this.elements.btnEndCall
+        .addEventListener(
+          'click',
+          () => {
+            this.endCall(true);
+          }
+        );
     }
   },
 
 
-  // ==========================================================
+  // ==============================================================
   // START OUTGOING CALL
-  // ==========================================================
+  // ==============================================================
 
   async startCall(
     peerUser,
@@ -954,7 +750,6 @@ const Calls = {
   ) {
 
     if (!peerUser) {
-
       return;
     }
 
@@ -972,10 +767,8 @@ const Calls = {
 
     console.log(
       '[Calls] Starting outgoing call:',
-      {
-        peerId: peerUser.id,
-        callType
-      }
+      peerUser,
+      callType
     );
 
 
@@ -986,7 +779,8 @@ const Calls = {
 
       peerName:
         peerUser.display_name ||
-        peerUser.username,
+        peerUser.username ||
+        'Contact',
 
       peerAvatar:
         peerUser.avatar_url,
@@ -1004,9 +798,9 @@ const Calls = {
 
     try {
 
-      // ------------------------------------------------------
+      // ----------------------------------------------------------
       // Acquire local media
-      // ------------------------------------------------------
+      // ----------------------------------------------------------
 
       const localStream =
         await webrtc.getMediaStream(
@@ -1014,9 +808,9 @@ const Calls = {
         );
 
 
-      // ------------------------------------------------------
-      // Local video preview
-      // ------------------------------------------------------
+      // ----------------------------------------------------------
+      // Attach local video
+      // ----------------------------------------------------------
 
       if (
         this.elements.localVideo &&
@@ -1026,53 +820,54 @@ const Calls = {
         this.elements.localVideo.srcObject =
           localStream;
 
+        this.elements.localVideo.muted =
+          true;
 
-        try {
+        this.elements.localVideo.autoplay =
+          true;
 
-          await this.elements.localVideo.play();
+        this.elements.localVideo.playsInline =
+          true;
 
-        } catch (e) {
-
-          console.warn(
-            '[Calls] Local video autoplay failed:',
-            e
-          );
-
-        }
+        this.elements.localVideo.play()
+          .catch(error => {
+            console.warn(
+              '[Calls] Local video playback blocked:',
+              error
+            );
+          });
       }
 
 
-      // ------------------------------------------------------
-      // Open call modal
-      // ------------------------------------------------------
+      // ----------------------------------------------------------
+      // Show call modal
+      // ----------------------------------------------------------
 
       this.showCallModal(
         this.activeCall
       );
-
 
       this.updateCallStatus(
         'Calling...'
       );
 
 
-      // ------------------------------------------------------
-      // Ringtone
-      // ------------------------------------------------------
+      // ----------------------------------------------------------
+      // Play ringback
+      // ----------------------------------------------------------
 
       this.playRingtone(
         'outgoing'
       );
 
 
-      // ------------------------------------------------------
-      // Send call invitation
-      // ------------------------------------------------------
+      // ----------------------------------------------------------
+      // Send call invite
+      // ----------------------------------------------------------
 
       console.log(
-        '[Calls] Sending call invite.'
+        '[Calls] Sending call_invite'
       );
-
 
       WSClient.send(
         'call_invite',
@@ -1085,51 +880,40 @@ const Calls = {
         }
       );
 
-
-    } catch (err) {
+    } catch (error) {
 
       console.error(
         '[Calls] Failed to start call:',
-        err
+        error
       );
 
-
       Utils.showToast(
-        err.message ||
+        error.message ||
         'Unable to start call',
         'error'
       );
 
-
-      this.endCall(
-        false
-      );
+      this.endCall(false);
     }
   },
 
 
-  // ==========================================================
-  // HANDLE INCOMING INVITE
-  // ==========================================================
+  // ==============================================================
+  // HANDLE INCOMING CALL
+  // ==============================================================
 
   handleIncomingInvite(data) {
 
     if (!data) {
-
       return;
     }
 
 
-    // --------------------------------------------------------
-    // Busy
-    // --------------------------------------------------------
-
     if (this.activeCall) {
 
-      console.log(
-        '[Calls] Already in a call. Rejecting incoming call.'
+      console.warn(
+        '[Calls] Already in another call'
       );
-
 
       WSClient.send(
         'call_reject',
@@ -1142,14 +926,14 @@ const Calls = {
         }
       );
 
-
       return;
     }
 
 
-    // --------------------------------------------------------
-    // Create active call
-    // --------------------------------------------------------
+    console.log(
+      '[Calls] Handling incoming call'
+    );
+
 
     this.activeCall = {
 
@@ -1175,15 +959,9 @@ const Calls = {
     };
 
 
-    console.log(
-      '[Calls] Incoming call:',
-      this.activeCall
-    );
-
-
-    // --------------------------------------------------------
-    // Incoming avatar
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
+    // Render incoming caller
+    // ------------------------------------------------------------
 
     const avatar =
       API.resolveUrl(
@@ -1220,16 +998,11 @@ const Calls = {
     }
 
 
-    // --------------------------------------------------------
-    // Show incoming overlay
-    // --------------------------------------------------------
-
     if (this.elements.incomingOverlay) {
 
       this.elements.incomingOverlay
-        .classList.add(
-          'active'
-        );
+        .classList
+        .add('active');
     }
 
 
@@ -1239,11 +1012,16 @@ const Calls = {
   },
 
 
-  // ==========================================================
+  // ==============================================================
   // ACCEPT INCOMING CALL
-  // ==========================================================
+  // ==============================================================
 
   async acceptIncomingCall() {
+
+    console.log(
+      '[Calls] Accepting incoming call'
+    );
+
 
     this.stopRingtone();
 
@@ -1251,29 +1029,26 @@ const Calls = {
     if (this.elements.incomingOverlay) {
 
       this.elements.incomingOverlay
-        .classList.remove(
-          'active'
-        );
+        .classList
+        .remove('active');
     }
 
 
     if (!this.activeCall) {
 
+      console.warn(
+        '[Calls] No active incoming call'
+      );
+
       return;
     }
 
 
-    console.log(
-      '[Calls] Accepting incoming call:',
-      this.activeCall
-    );
-
-
     try {
 
-      // ------------------------------------------------------
-      // Acquire local stream
-      // ------------------------------------------------------
+      // ----------------------------------------------------------
+      // Get local media
+      // ----------------------------------------------------------
 
       const localStream =
         await webrtc.getMediaStream(
@@ -1281,9 +1056,9 @@ const Calls = {
         );
 
 
-      // ------------------------------------------------------
+      // ----------------------------------------------------------
       // Local video
-      // ------------------------------------------------------
+      // ----------------------------------------------------------
 
       if (
         this.elements.localVideo &&
@@ -1293,44 +1068,46 @@ const Calls = {
         this.elements.localVideo.srcObject =
           localStream;
 
+        this.elements.localVideo.muted =
+          true;
 
-        try {
+        this.elements.localVideo.autoplay =
+          true;
 
-          await this.elements.localVideo.play();
+        this.elements.localVideo.playsInline =
+          true;
 
-        } catch (e) {
+        this.elements.localVideo.play()
+          .catch(error => {
 
-          console.warn(
-            '[Calls] Local video playback failed:',
-            e
-          );
-
-        }
+            console.warn(
+              '[Calls] Local video playback blocked:',
+              error
+            );
+          });
       }
 
 
-      // ------------------------------------------------------
+      // ----------------------------------------------------------
       // Show modal
-      // ------------------------------------------------------
+      // ----------------------------------------------------------
 
       this.showCallModal(
         this.activeCall
       );
-
 
       this.updateCallStatus(
         'Connecting...'
       );
 
 
-      // ------------------------------------------------------
-      // Notify caller
-      // ------------------------------------------------------
+      // ----------------------------------------------------------
+      // Tell caller we accepted
+      // ----------------------------------------------------------
 
       console.log(
-        '[Calls] Sending call_accept.'
+        '[Calls] Sending call_accept'
       );
-
 
       WSClient.send(
         'call_accept',
@@ -1343,32 +1120,34 @@ const Calls = {
         }
       );
 
-
-    } catch (err) {
+    } catch (error) {
 
       console.error(
         '[Calls] Failed to accept call:',
-        err
+        error
       );
 
-
       Utils.showToast(
-        err.message ||
+        error.message ||
         'Unable to accept call',
         'error'
       );
-
 
       this.declineIncomingCall();
     }
   },
 
 
-  // ==========================================================
+  // ==============================================================
   // DECLINE INCOMING CALL
-  // ==========================================================
+  // ==============================================================
 
   declineIncomingCall() {
+
+    console.log(
+      '[Calls] Declining incoming call'
+    );
+
 
     this.stopRingtone();
 
@@ -1376,18 +1155,12 @@ const Calls = {
     if (this.elements.incomingOverlay) {
 
       this.elements.incomingOverlay
-        .classList.remove(
-          'active'
-        );
+        .classList
+        .remove('active');
     }
 
 
     if (this.activeCall) {
-
-      console.log(
-        '[Calls] Declining incoming call.'
-      );
-
 
       WSClient.send(
         'call_reject',
@@ -1402,19 +1175,32 @@ const Calls = {
     }
 
 
-    this.endCall(
-      false
-    );
+    this.endCall(false);
   },
 
 
-  // ==========================================================
+  // ==============================================================
   // CALL ACCEPTED BY CALLEE
-  // ==========================================================
+  // ==============================================================
 
   async handleCallAccepted(data) {
 
+    console.log(
+      '[Calls] Callee accepted call'
+    );
+
+
     this.stopRingtone();
+
+
+    if (!this.activeCall) {
+
+      console.warn(
+        '[Calls] No active call when call_accept arrived'
+      );
+
+      return;
+    }
 
 
     this.updateCallStatus(
@@ -1422,29 +1208,22 @@ const Calls = {
     );
 
 
-    if (!this.activeCall) {
-
-      console.warn(
-        '[Calls] Call accepted but no active call exists.'
-      );
-
-      return;
-    }
-
-
     try {
 
-      console.log(
-        '[Calls] Creating SDP offer.'
-      );
+      // ----------------------------------------------------------
+      // Create WebRTC offer
+      // ----------------------------------------------------------
 
+      console.log(
+        '[Calls] Creating WebRTC offer'
+      );
 
       const offer =
         await webrtc.createOffer();
 
 
       console.log(
-        '[Calls] Sending WebRTC offer.'
+        '[Calls] Sending WebRTC offer'
       );
 
 
@@ -1459,31 +1238,26 @@ const Calls = {
         }
       );
 
-
-    } catch (err) {
+    } catch (error) {
 
       console.error(
         '[Calls] Failed to create offer:',
-        err
+        error
       );
 
-
       Utils.showToast(
-        'Failed to establish call',
+        'Failed to create call connection.',
         'error'
       );
 
-
-      this.endCall(
-        true
-      );
+      this.endCall(true);
     }
   },
 
 
-  // ==========================================================
+  // ==============================================================
   // CALL REJECTED
-  // ==========================================================
+  // ==============================================================
 
   handleCallRejected(data) {
 
@@ -1491,15 +1265,11 @@ const Calls = {
 
 
     const reasonMsg =
-      data &&
-      data.reason === 'busy'
+      data?.reason === 'busy'
         ? 'User is busy on another call.'
         : (
-            data &&
-            (
-              data.message ||
-              'Call was declined.'
-            )
+            data?.message ||
+            'Call was declined.'
           );
 
 
@@ -1509,32 +1279,25 @@ const Calls = {
     );
 
 
-    this.endCall(
-      false
-    );
+    this.endCall(false);
   },
 
 
-  // ==========================================================
-  // HANDLE WEBRTC OFFER
-  // ==========================================================
+  // ==============================================================
+  // RECEIVE WEBRTC OFFER
+  // ==============================================================
 
   async handleWebRtcOffer(data) {
 
+    console.log(
+      '[Calls] Handling WebRTC offer'
+    );
+
+
     if (!this.activeCall) {
 
-      console.warn(
-        '[Calls] Received WebRTC offer without active call.'
-      );
-
-      return;
-    }
-
-
-    if (!data || !data.offer) {
-
       console.error(
-        '[Calls] WebRTC offer payload is missing.'
+        '[Calls] Received offer without active call'
       );
 
       return;
@@ -1543,19 +1306,20 @@ const Calls = {
 
     try {
 
-      console.log(
-        '[Calls] Handling WebRTC offer.'
+      this.updateCallStatus(
+        'Connecting...'
       );
 
 
       const answer =
-        await webrtc.handleOfferAndCreateAnswer(
-          data.offer
-        );
+        await webrtc
+          .handleOfferAndCreateAnswer(
+            data.offer
+          );
 
 
       console.log(
-        '[Calls] Sending WebRTC answer.'
+        '[Calls] Sending WebRTC answer'
       );
 
 
@@ -1571,56 +1335,41 @@ const Calls = {
       );
 
 
-      // ------------------------------------------------------
-      // Answer sent. Connection establishment can now begin.
-      // ------------------------------------------------------
+      // Do NOT start the timer here.
+      // Timer starts when WebRTC actually connects.
 
-      this.updateCallStatus(
-        'Connecting...'
-      );
-
-
-    } catch (err) {
+    } catch (error) {
 
       console.error(
         '[Calls] Error handling WebRTC offer:',
-        err
+        error
       );
 
-
       Utils.showToast(
-        'Failed to establish incoming call',
+        'Failed to establish call connection.',
         'error'
       );
 
-
-      this.endCall(
-        true
-      );
+      this.endCall(true);
     }
   },
 
 
-  // ==========================================================
-  // HANDLE WEBRTC ANSWER
-  // ==========================================================
+  // ==============================================================
+  // RECEIVE WEBRTC ANSWER
+  // ==============================================================
 
   async handleWebRtcAnswer(data) {
 
+    console.log(
+      '[Calls] Handling WebRTC answer'
+    );
+
+
     if (!this.activeCall) {
 
-      console.warn(
-        '[Calls] Received WebRTC answer without active call.'
-      );
-
-      return;
-    }
-
-
-    if (!data || !data.answer) {
-
       console.error(
-        '[Calls] WebRTC answer payload is missing.'
+        '[Calls] Received answer without active call'
       );
 
       return;
@@ -1629,71 +1378,53 @@ const Calls = {
 
     try {
 
-      console.log(
-        '[Calls] Handling WebRTC answer.'
-      );
-
-
       await webrtc.handleAnswer(
         data.answer
       );
 
 
-      this.updateCallStatus(
-        'Connecting...'
+      console.log(
+        '[Calls] Remote answer applied successfully'
       );
 
 
-    } catch (err) {
+      // Do NOT start timer here.
+      // Wait for connection state = connected.
+
+    } catch (error) {
 
       console.error(
         '[Calls] Error handling WebRTC answer:',
-        err
+        error
       );
 
-
       Utils.showToast(
-        'Failed to establish call',
+        'Failed to complete call connection.',
         'error'
       );
     }
   },
 
 
-  // ==========================================================
+  // ==============================================================
   // END CALL
-  // ==========================================================
+  // ==============================================================
 
-  endCall(
-    notifyPeer = true
-  ) {
+  endCall(notifyPeer = true) {
 
     console.log(
-      '[Calls] Ending call.',
-      {
-        notifyPeer,
-        activeCall: this.activeCall
-      }
+      '[Calls] Ending call'
     );
 
 
-    // --------------------------------------------------------
-    // Stop ringtone
-    // --------------------------------------------------------
-
     this.stopRingtone();
-
-
-    // --------------------------------------------------------
-    // Stop duration timer
-    // --------------------------------------------------------
 
     this.stopDurationTimer();
 
 
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
     // Notify peer
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
 
     if (
       this.activeCall &&
@@ -1710,31 +1441,28 @@ const Calls = {
           }
         );
 
-      } catch (e) {
+      } catch (error) {
 
         console.warn(
-          '[Calls] Failed to notify peer about call end:',
-          e
+          '[Calls] Failed to notify peer:',
+          error
         );
-
       }
     }
 
 
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
     // Cleanup WebRTC
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
 
     webrtc.cleanup();
 
 
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
     // Clear remote video
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
 
-    if (
-      this.elements.remoteVideo
-    ) {
+    if (this.elements.remoteVideo) {
 
       this.elements.remoteVideo.pause();
 
@@ -1743,13 +1471,11 @@ const Calls = {
     }
 
 
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
     // Clear remote audio
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
 
-    if (
-      this.elements.remoteAudio
-    ) {
+    if (this.elements.remoteAudio) {
 
       this.elements.remoteAudio.pause();
 
@@ -1758,13 +1484,11 @@ const Calls = {
     }
 
 
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
     // Clear local video
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
 
-    if (
-      this.elements.localVideo
-    ) {
+    if (this.elements.localVideo) {
 
       this.elements.localVideo.pause();
 
@@ -1773,84 +1497,68 @@ const Calls = {
     }
 
 
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
     // Hide call modal
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
 
-    if (
-      this.elements.callModal
-    ) {
+    if (this.elements.callModal) {
 
       this.elements.callModal
-        .classList.remove(
-          'active'
-        );
+        .classList
+        .remove('active');
     }
 
 
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
     // Hide incoming overlay
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
 
-    if (
-      this.elements.incomingOverlay
-    ) {
+    if (this.elements.incomingOverlay) {
 
       this.elements.incomingOverlay
-        .classList.remove(
-          'active'
-        );
+        .classList
+        .remove('active');
     }
 
 
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
     // Reset state
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
 
     this.activeCall =
       null;
 
-
     this.isAudioMuted =
       false;
-
 
     this.isVideoMuted =
       false;
 
 
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
     // Reset microphone button
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
 
-    if (
-      this.elements.btnMuteMic
-    ) {
+    if (this.elements.btnMuteMic) {
 
       this.elements.btnMuteMic
-        .classList.remove(
-          'muted'
-        );
-
+        .classList
+        .remove('muted');
 
       this.elements.btnMuteMic.innerHTML =
         '🎤';
     }
 
 
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
     // Reset camera button
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
 
-    if (
-      this.elements.btnToggleCam
-    ) {
+    if (this.elements.btnToggleCam) {
 
       this.elements.btnToggleCam
-        .classList.remove(
-          'off'
-        );
-
+        .classList
+        .remove('off');
 
       this.elements.btnToggleCam.innerHTML =
         '📹';
@@ -1858,21 +1566,18 @@ const Calls = {
 
 
     console.log(
-      '[Calls] Call cleanup complete.'
+      '[Calls] Call cleanup complete'
     );
   },
 
 
-  // ==========================================================
+  // ==============================================================
   // SHOW CALL MODAL
-  // ==========================================================
+  // ==============================================================
 
-  showCallModal(
-    callInfo
-  ) {
+  showCallModal(callInfo) {
 
     if (!callInfo) {
-
       return;
     }
 
@@ -1890,13 +1595,7 @@ const Calls = {
       )}`;
 
 
-    // --------------------------------------------------------
-    // Peer information
-    // --------------------------------------------------------
-
-    if (
-      this.elements.peerName
-    ) {
+    if (this.elements.peerName) {
 
       this.elements.peerName.textContent =
         callInfo.peerName ||
@@ -1904,139 +1603,18 @@ const Calls = {
     }
 
 
-    if (
-      this.elements.voiceAvatar
-    ) {
+    if (this.elements.voiceAvatar) {
 
       this.elements.voiceAvatar.src =
         avatar;
     }
 
 
-    // ========================================================
-    // VIDEO CALL
-    // ========================================================
-
-    if (isVideo) {
-
-      if (
-        this.elements.videoStage
-      ) {
-
-        this.elements.videoStage
-          .classList.remove(
-            'hidden'
-          );
-      }
-
-
-      if (
-        this.elements.voiceStage
-      ) {
-
-        this.elements.voiceStage
-          .classList.add(
-            'hidden'
-          );
-      }
-
-
-      if (
-        this.elements.btnToggleCam
-      ) {
-
-        this.elements.btnToggleCam
-          .classList.remove(
-            'hidden'
-          );
-      }
-
-
-      if (
-        this.elements.btnSwitchCam
-      ) {
-
-        this.elements.btnSwitchCam
-          .classList.remove(
-            'hidden'
-          );
-      }
-
-    }
-
-    // ========================================================
-    // VOICE CALL
-    // ========================================================
-
-    else {
-
-      if (
-        this.elements.videoStage
-      ) {
-
-        this.elements.videoStage
-          .classList.add(
-            'hidden'
-          );
-      }
-
-
-      if (
-        this.elements.voiceStage
-      ) {
-
-        this.elements.voiceStage
-          .classList.remove(
-            'hidden'
-          );
-      }
-
-
-      if (
-        this.elements.btnToggleCam
-      ) {
-
-        this.elements.btnToggleCam
-          .classList.add(
-            'hidden'
-          );
-      }
-
-
-      if (
-        this.elements.btnSwitchCam
-      ) {
-
-        this.elements.btnSwitchCam
-          .classList.add(
-            'hidden'
-          );
-      }
-    }
-
-
-    // --------------------------------------------------------
-    // Show modal
-    // --------------------------------------------------------
-
-    if (
-      this.elements.callModal
-    ) {
-
-      this.elements.callModal
-        .classList.add(
-          'active'
-        );
-    }
-
-
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
     // Prepare remote audio
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
 
-    if (
-      this.elements.remoteAudio
-    ) {
+    if (this.elements.remoteAudio) {
 
       this.elements.remoteAudio.autoplay =
         true;
@@ -2044,39 +1622,147 @@ const Calls = {
       this.elements.remoteAudio.playsInline =
         true;
 
+      this.elements.remoteAudio.muted =
+        false;
+
       this.elements.remoteAudio.volume =
         1.0;
     }
 
 
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
     // Prepare remote video
-    // --------------------------------------------------------
+    // ------------------------------------------------------------
 
-    if (
-      this.elements.remoteVideo
-    ) {
+    if (this.elements.remoteVideo) {
 
       this.elements.remoteVideo.autoplay =
         true;
 
       this.elements.remoteVideo.playsInline =
         true;
+
+      this.elements.remoteVideo.muted =
+        false;
+    }
+
+
+    // ------------------------------------------------------------
+    // Prepare local video
+    // ------------------------------------------------------------
+
+    if (this.elements.localVideo) {
+
+      this.elements.localVideo.autoplay =
+        true;
+
+      this.elements.localVideo.playsInline =
+        true;
+
+      // Local preview MUST be muted.
+      this.elements.localVideo.muted =
+        true;
+    }
+
+
+    // ------------------------------------------------------------
+    // VIDEO MODE
+    // ------------------------------------------------------------
+
+    if (isVideo) {
+
+      if (this.elements.videoStage) {
+
+        this.elements.videoStage
+          .classList
+          .remove('hidden');
+      }
+
+
+      if (this.elements.voiceStage) {
+
+        this.elements.voiceStage
+          .classList
+          .add('hidden');
+      }
+
+
+      if (this.elements.btnToggleCam) {
+
+        this.elements.btnToggleCam
+          .classList
+          .remove('hidden');
+      }
+
+
+      if (this.elements.btnSwitchCam) {
+
+        this.elements.btnSwitchCam
+          .classList
+          .remove('hidden');
+      }
+
+    }
+
+    // ------------------------------------------------------------
+    // VOICE MODE
+    // ------------------------------------------------------------
+
+    else {
+
+      if (this.elements.videoStage) {
+
+        this.elements.videoStage
+          .classList
+          .add('hidden');
+      }
+
+
+      if (this.elements.voiceStage) {
+
+        this.elements.voiceStage
+          .classList
+          .remove('hidden');
+      }
+
+
+      if (this.elements.btnToggleCam) {
+
+        this.elements.btnToggleCam
+          .classList
+          .add('hidden');
+      }
+
+
+      if (this.elements.btnSwitchCam) {
+
+        this.elements.btnSwitchCam
+          .classList
+          .add('hidden');
+      }
+    }
+
+
+    // ------------------------------------------------------------
+    // Show modal
+    // ------------------------------------------------------------
+
+    if (this.elements.callModal) {
+
+      this.elements.callModal
+        .classList
+        .add('active');
     }
   },
 
 
-  // ==========================================================
+  // ==============================================================
   // UPDATE CALL STATUS
-  // ==========================================================
+  // ==============================================================
 
-  updateCallStatus(
-    text
-  ) {
+  updateCallStatus(text) {
 
-    if (
-      this.elements.callTimerEl
-    ) {
+    if (this.elements.callTimerEl) {
 
       this.elements.callTimerEl.textContent =
         text;
@@ -2084,13 +1770,16 @@ const Calls = {
   },
 
 
-  // ==========================================================
-  // START CALL DURATION TIMER
-  // ==========================================================
+  // ==============================================================
+  // CALL DURATION TIMER
+  // ==============================================================
 
   startDurationTimer() {
 
-    this.stopDurationTimer();
+    // Don't create duplicate timers.
+    if (this.callTimer) {
+      return;
+    }
 
 
     this.callSeconds =
@@ -2139,30 +1828,109 @@ const Calls = {
   },
 
 
-  // ==========================================================
-  // STOP CALL DURATION TIMER
-  // ==========================================================
+  // ==============================================================
+  // STOP CALL TIMER
+  // ==============================================================
 
   stopDurationTimer() {
 
-    if (
-      this.callTimer
-    ) {
+    if (this.callTimer) {
 
       clearInterval(
         this.callTimer
       );
 
-
       this.callTimer =
         null;
     }
+
+
+    this.callSeconds =
+      0;
   },
 
 
-  // ==========================================================
+  // ==============================================================
+  // REMOTE AUDIO AUTOPLAY RETRY
+  // ==============================================================
+
+  enableAudioPlaybackRetry() {
+
+    const audio =
+      this.elements.remoteAudio;
+
+
+    if (!audio) {
+      return;
+    }
+
+
+    const tryPlay =
+      () => {
+
+        if (
+          !audio.srcObject
+        ) {
+          return;
+        }
+
+
+        audio.muted =
+          false;
+
+        audio.volume =
+          1.0;
+
+
+        audio.play()
+          .then(() => {
+
+            console.log(
+              '[Calls] Remote audio playback started after user interaction'
+            );
+
+          })
+          .catch(error => {
+
+            console.warn(
+              '[Calls] Audio playback still blocked:',
+              error
+            );
+          });
+      };
+
+
+    document.addEventListener(
+      'click',
+      tryPlay,
+      {
+        once: true
+      }
+    );
+
+
+    document.addEventListener(
+      'touchstart',
+      tryPlay,
+      {
+        once: true
+      }
+    );
+
+
+    document.addEventListener(
+      'keydown',
+      tryPlay,
+      {
+        once: true
+      }
+    );
+  },
+
+
+  // ==============================================================
   // RINGTONE
-  // ==========================================================
+  // ==============================================================
 
   playRingtone(
     type = 'incoming'
@@ -2171,19 +1939,17 @@ const Calls = {
     this.stopRingtone();
 
 
-    if (
-      typeof Notifications === 'undefined'
-    ) {
+    try {
+
+      Notifications.initAudio();
+
+    } catch (error) {
 
       console.warn(
-        '[Calls] Notifications module unavailable.'
+        '[Calls] Notification audio initialization failed:',
+        error
       );
-
-      return;
     }
-
-
-    Notifications.initAudio();
 
 
     const playTone =
@@ -2192,7 +1958,6 @@ const Calls = {
         if (
           !Notifications.audioContext
         ) {
-
           return;
         }
 
@@ -2205,7 +1970,7 @@ const Calls = {
           ctx.currentTime;
 
 
-        const osc =
+        const oscillator =
           ctx.createOscillator();
 
 
@@ -2213,25 +1978,20 @@ const Calls = {
           ctx.createGain();
 
 
-        osc.type =
+        oscillator.type =
           'sine';
 
 
-        if (
-          type === 'incoming'
-        ) {
+        if (type === 'incoming') {
 
-          // --------------------------------------------------
-          // Incoming call tone
-          // --------------------------------------------------
-
-          osc.frequency.setValueAtTime(
-            440,
-            now
-          );
+          oscillator.frequency
+            .setValueAtTime(
+              440,
+              now
+            );
 
 
-          osc.frequency
+          oscillator.frequency
             .exponentialRampToValueAtTime(
               880,
               now + 0.3
@@ -2239,21 +1999,19 @@ const Calls = {
 
         } else {
 
-          // --------------------------------------------------
-          // Outgoing ringback
-          // --------------------------------------------------
-
-          osc.frequency.setValueAtTime(
-            440,
-            now
-          );
+          oscillator.frequency
+            .setValueAtTime(
+              440,
+              now
+            );
         }
 
 
-        gain.gain.setValueAtTime(
-          0.12,
-          now
-        );
+        gain.gain
+          .setValueAtTime(
+            0.12,
+            now
+          );
 
 
         gain.gain
@@ -2263,7 +2021,7 @@ const Calls = {
           );
 
 
-        osc.connect(
+        oscillator.connect(
           gain
         );
 
@@ -2273,12 +2031,12 @@ const Calls = {
         );
 
 
-        osc.start(
+        oscillator.start(
           now
         );
 
 
-        osc.stop(
+        oscillator.stop(
           now + 0.6
         );
       };
@@ -2297,23 +2055,27 @@ const Calls = {
   },
 
 
-  // ==========================================================
+  // ==============================================================
   // STOP RINGTONE
-  // ==========================================================
+  // ==============================================================
 
   stopRingtone() {
 
-    if (
-      this.ringtoneInterval
-    ) {
+    if (this.ringtoneInterval) {
 
       clearInterval(
         this.ringtoneInterval
       );
-
 
       this.ringtoneInterval =
         null;
     }
   }
 };
+
+
+// ================================================================
+// EXPORT / GLOBAL
+// ================================================================
+
+window.Calls = Calls;
