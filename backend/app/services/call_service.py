@@ -18,9 +18,9 @@ class CallService:
             {"urls": "stun:stun4.l.google.com:19302"},
         ]
 
-        turn_url = os.getenv("TURN_SERVER_URL")
-        turn_username = os.getenv("TURN_USERNAME")
-        turn_credential = os.getenv("TURN_CREDENTIAL")
+        turn_url = "turns:global.relay.metered.ca:443?transport=tcp"
+        turn_username = "6faf161da06f97642e4ab92a"
+        turn_credential = "9BwCLR9Brt5j+/t8"
 
         if turn_url:
             turn_config: Dict[str, Any] = {"urls": turn_url}
