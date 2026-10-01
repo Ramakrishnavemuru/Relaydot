@@ -13,141 +13,481 @@
   <link rel="stylesheet" href="css/stories.css">
   <link rel="stylesheet" href="css/responsive.css">
 </head>
+
 <body>
+
   <div class="chat-app-container">
-    
+
     <nav class="app-rail" aria-label="Main navigation">
-      <a href="chat.html" class="brand-mark" title="Relay home" aria-label="Relay home"><span data-icon="messages"></span></a>
+      <a href="chat.html" class="brand-mark" title="Relay home" aria-label="Relay home">
+        <span data-icon="messages"></span>
+      </a>
+
       <div class="rail-links">
-        <button class="rail-button active" id="nav-messages" title="Messages" aria-label="Messages" aria-current="page"><span data-icon="message"></span><span>Chats</span></button>
-        <button class="rail-button" id="nav-stories" title="Stories" aria-label="Stories"><span data-icon="circle"></span><span>Stories</span></button>
-        <button class="rail-button" id="btn-new-group" title="New group" aria-label="New group"><span data-icon="users"></span><span>Groups</span></button>
+        <button class="rail-button active" id="nav-messages" title="Messages" aria-label="Messages" aria-current="page">
+          <span data-icon="message"></span>
+          <span>Chats</span>
+        </button>
+
+        <button class="rail-button" id="nav-stories" title="Stories" aria-label="Stories">
+          <span data-icon="circle"></span>
+          <span>Stories</span>
+        </button>
+
+        <button class="rail-button" id="btn-new-group" title="New group" aria-label="New group">
+          <span data-icon="users"></span>
+          <span>Groups</span>
+        </button>
       </div>
+
       <div class="rail-bottom">
-        <button class="icon-btn" data-theme-toggle title="Toggle light or dark theme"><span data-icon="sun"></span></button>
-        <button id="btn-settings" class="icon-btn" title="Settings"><span data-icon="settings"></span></button>
-        <button id="btn-logout" class="icon-btn" title="Sign out"><span data-icon="logout"></span></button>
+        <button class="icon-btn" data-theme-toggle title="Toggle light or dark theme">
+          <span data-icon="sun"></span>
+        </button>
+
+        <button id="btn-settings" class="icon-btn" title="Settings">
+          <span data-icon="settings"></span>
+        </button>
+
+        <button id="btn-logout" class="icon-btn" title="Sign out">
+          <span data-icon="logout"></span>
+        </button>
+
         <a href="profile.html" id="btn-header-profile" class="rail-profile" title="Your profile" aria-label="Your profile">
-          <img id="my-avatar" src="" alt="Your profile" class="avatar-img" /><span id="my-status-dot" class="online-dot online"></span>
+          <img id="my-avatar" src="" alt="Your profile" class="avatar-img">
+          <span id="my-status-dot" class="online-dot online"></span>
         </a>
       </div>
     </nav>
+
+
     <aside class="chat-sidebar" aria-label="Conversations">
-      <div class="sidebar-brand"><span>relay<span class="brand-period">.</span></span><span class="workspace-label">YOUR SPACE TO CONNECT</span></div>
-      <div class="sidebar-header">
-        <div><h1>Messages <span id="conversation-count" class="count-label">0</span></h1><p>Good conversations start here.</p></div>
-        <button id="btn-new-chat" class="icon-btn compose-button" title="New conversation"><span data-icon="compose"></span></button>
+
+      <div class="sidebar-brand">
+        <span>relay<span class="brand-period">.</span></span>
+        <span class="workspace-label">YOUR SPACE TO CONNECT</span>
       </div>
-      <div class="sidebar-search"><div class="search-input-wrap"><span class="search-icon" data-icon="search"></span><input type="search" id="conv-search-input" class="form-input" placeholder="Search conversations" aria-label="Search conversations" /><kbd>⌘ K</kbd></div></div>
+
+      <div class="sidebar-header">
+        <div>
+          <h1>
+            Messages
+            <span id="conversation-count" class="count-label">0</span>
+          </h1>
+          <p>Good conversations start here.</p>
+        </div>
+
+        <button id="btn-new-chat" class="icon-btn compose-button" title="New conversation">
+          <span data-icon="compose"></span>
+        </button>
+      </div>
+
+      <div class="sidebar-search">
+        <div class="search-input-wrap">
+          <span class="search-icon" data-icon="search"></span>
+
+          <input
+            type="search"
+            id="conv-search-input"
+            class="form-input"
+            placeholder="Search conversations"
+            aria-label="Search conversations"
+          />
+
+          <kbd>⌘ K</kbd>
+        </div>
+      </div>
+
       <nav class="chat-filters" aria-label="Filter conversations">
-        <button class="chat-filter active" data-filter="all" aria-pressed="true">All chats</button>
-        <button class="chat-filter" data-filter="unread" aria-pressed="false">Unread <span id="unread-count"></span></button>
-        <button class="chat-filter" data-filter="groups" aria-pressed="false">Groups</button>
+        <button
+          class="chat-filter active"
+          data-filter="all"
+          aria-pressed="true"
+        >
+          All chats
+        </button>
+
+        <button
+          class="chat-filter"
+          data-filter="unread"
+          aria-pressed="false"
+        >
+          Unread
+          <span id="unread-count"></span>
+        </button>
+
+        <button
+          class="chat-filter"
+          data-filter="groups"
+          aria-pressed="false"
+        >
+          Groups
+        </button>
       </nav>
+
+
       <!-- 24-Hour Stories Carousel Tray -->
       <div id="stories-tray-container" class="stories-tray-container hidden">
+
         <div class="stories-tray-title">
           <span>Stories</span>
-          <button id="btn-add-story" class="btn btn-sm btn-secondary" style="padding: 2px 8px; font-size: 0.7rem;">+ Add Story</button>
+
+          <button
+            id="btn-add-story"
+            class="btn btn-sm btn-secondary"
+            style="padding: 2px 8px; font-size: 0.7rem;"
+          >
+            + Add Story
+          </button>
         </div>
+
         <div id="stories-carousel" class="stories-carousel">
           <!-- Rendered dynamically -->
         </div>
+
       </div>
+
 
       <!-- Conversations List -->
       <div id="conversations-list" class="conversations-list">
         <!-- Rendered dynamically -->
       </div>
-      <div class="sidebar-footer"><span class="connection-dot"></span><span id="connection-label" role="status">Connecting…</span><span id="my-name" class="truncate">Your workspace</span></div>
+
+
+      <div class="sidebar-footer">
+        <span class="connection-dot"></span>
+
+        <span id="connection-label" role="status">
+          Connecting…
+        </span>
+
+        <span id="my-name" class="truncate">
+          Your workspace
+        </span>
+      </div>
+
     </aside>
+
 
     <!-- Main Chat Window Area -->
     <main class="chat-window">
-      
-      <!-- Empty Chat State (No conversation selected) -->
+
+
+      <!-- Empty Chat State -->
       <div id="empty-chat-state" class="empty-chat-state">
-        <div class="empty-topline"><span>Your everyday conversations, beautifully connected.</span><span data-icon="messages"></span></div>
-        <div class="empty-content"><div class="empty-illustration" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="illustration-bubble bubble-back"><span></span><span></span><span></span></div><div class="illustration-bubble bubble-front"><span data-icon="message"></span></div><i class="orbit-dot dot-one"></i><i class="orbit-dot dot-two"></i></div>
-        <span class="eyebrow">A LITTLE CLOSER, EVERY DAY</span><h2 class="empty-state-title">Good things start<br>with a conversation.</h2><p class="empty-state-desc">Your people. Your ideas. All in one place.<br>Pick a chat or start something new.</p><button id="btn-empty-new-chat" class="btn btn-primary"><span data-icon="plus"></span>Start a conversation</button><span class="empty-shortcut">Find your next conversation <kbd>⌘ K</kbd></span></div>
-        <div class="empty-bottomline"><span data-icon="message"></span>A calmer place to keep in touch.</div>
+
+        <div class="empty-topline">
+          <span>Your everyday conversations, beautifully connected.</span>
+          <span data-icon="messages"></span>
+        </div>
+
+        <div class="empty-content">
+
+          <div class="empty-illustration" aria-hidden="true">
+
+            <div class="orbit orbit-one"></div>
+            <div class="orbit orbit-two"></div>
+
+            <div class="illustration-bubble bubble-back">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+
+            <div class="illustration-bubble bubble-front">
+              <span data-icon="message"></span>
+            </div>
+
+            <i class="orbit-dot dot-one"></i>
+            <i class="orbit-dot dot-two"></i>
+
+          </div>
+
+          <span class="eyebrow">
+            A LITTLE CLOSER, EVERY DAY
+          </span>
+
+          <h2 class="empty-state-title">
+            Good things start<br>
+            with a conversation.
+          </h2>
+
+          <p class="empty-state-desc">
+            Your people. Your ideas. All in one place.<br>
+            Pick a chat or start something new.
+          </p>
+
+          <button id="btn-empty-new-chat" class="btn btn-primary">
+            <span data-icon="plus"></span>
+            Start a conversation
+          </button>
+
+          <span class="empty-shortcut">
+            Find your next conversation
+            <kbd>⌘ K</kbd>
+          </span>
+
+        </div>
+
+        <div class="empty-bottomline">
+          <span data-icon="message"></span>
+          A calmer place to keep in touch.
+        </div>
+
       </div>
+
 
       <!-- Active Chat Window -->
       <div id="active-chat-window" class="active-chat-window hidden">
-        
+
+
         <!-- Chat Header -->
         <header class="chat-header">
+
           <div class="chat-header-info">
-            <button id="btn-mobile-back" class="icon-btn btn-mobile-back" title="Back to conversations"><span data-icon="arrow-left"></span></button>
-            <img id="chat-avatar" src="" alt="Avatar" class="chat-header-avatar" />
-            <button class="chat-header-meta" id="btn-chat-info" title="Conversation details">
-              <span id="chat-title" class="chat-title">Conversation Name</span>
-              <span id="chat-header-status" class="status-text">
-                <span id="chat-subtitle" class="chat-subtitle">Offline</span>
-              </span>
+
+            <button
+              id="btn-mobile-back"
+              class="icon-btn btn-mobile-back"
+              title="Back to conversations"
+            >
+              <span data-icon="arrow-left"></span>
             </button>
+
+            <img
+              id="chat-avatar"
+              src=""
+              alt="Avatar"
+              class="chat-header-avatar"
+            >
+
+            <button
+              class="chat-header-meta"
+              id="btn-chat-info"
+              title="Conversation details"
+            >
+
+              <span id="chat-title" class="chat-title">
+                Conversation Name
+              </span>
+
+              <span id="chat-header-status" class="status-text">
+                <span id="chat-subtitle" class="chat-subtitle">
+                  Offline
+                </span>
+              </span>
+
+            </button>
+
           </div>
+
 
           <div class="chat-header-actions">
-            <!-- Voice and Video Call Triggers (Active for direct chats) -->
-            <button id="btn-voice-call" class="icon-btn hidden" title="Voice Call"><span data-icon="phone"></span></button>
-            <button id="btn-video-call" class="icon-btn hidden" title="Video Call"><span data-icon="video"></span></button>
-            <button id="btn-details" class="icon-btn" title="Conversation details"><span data-icon="info"></span></button>
-            <button id="btn-search-messages" class="icon-btn" title="Search in messages"><span data-icon="search"></span></button>
+
+            <!-- Voice and Video Call Triggers -->
+            <button
+              id="btn-voice-call"
+              class="icon-btn hidden"
+              title="Voice Call"
+            >
+              <span data-icon="phone"></span>
+            </button>
+
+            <button
+              id="btn-video-call"
+              class="icon-btn hidden"
+              title="Video Call"
+            >
+              <span data-icon="video"></span>
+            </button>
+
+            <button
+              id="btn-details"
+              class="icon-btn"
+              title="Conversation details"
+            >
+              <span data-icon="info"></span>
+            </button>
+
+            <button
+              id="btn-search-messages"
+              class="icon-btn"
+              title="Search in messages"
+            >
+              <span data-icon="search"></span>
+            </button>
+
           </div>
+
         </header>
 
-        <div id="connection-banner" class="connection-banner hidden" role="status">Connection interrupted. Reconnecting… <button id="btn-reconnect" class="text-button">Retry now</button></div>
-        <!-- Message History Feed -->
-        <div id="messages-container" class="messages-container">
-          <button id="btn-load-earlier" class="load-earlier hidden">Load earlier messages</button><div id="messages-list" role="log" aria-label="Messages" aria-live="polite"></div>
+
+        <div
+          id="connection-banner"
+          class="connection-banner hidden"
+          role="status"
+        >
+          Connection interrupted. Reconnecting…
+          <button id="btn-reconnect" class="text-button">
+            Retry now
+          </button>
         </div>
 
-        <!-- Ephemeral Typing Indicator -->
-        <div id="typing-indicator" class="typing-indicator-bar hidden">
+
+        <!-- Message History Feed -->
+        <div id="messages-container" class="messages-container">
+
+          <button
+            id="btn-load-earlier"
+            class="load-earlier hidden"
+          >
+            Load earlier messages
+          </button>
+
+          <div
+            id="messages-list"
+            role="log"
+            aria-label="Messages"
+            aria-live="polite"
+          ></div>
+
+        </div>
+
+
+        <!-- Typing Indicator -->
+        <div
+          id="typing-indicator"
+          class="typing-indicator-bar hidden"
+        >
+
           <div class="typing-dots">
             <span class="typing-dot"></span>
             <span class="typing-dot"></span>
             <span class="typing-dot"></span>
           </div>
-          <span id="typing-text">Someone is typing</span>
+
+          <span id="typing-text">
+            Someone is typing
+          </span>
+
         </div>
 
-        <!-- Chat Input Bar & Previews -->
+
+        <!-- Chat Input -->
         <footer class="chat-input-wrapper">
-          <!-- Reply Preview Banner -->
-          <div id="reply-preview-bar" class="preview-banner hidden">
+
+
+          <!-- Reply Preview -->
+          <div
+            id="reply-preview-bar"
+            class="preview-banner hidden"
+          >
+
             <div class="banner-content">
-              <span class="banner-author">Replying to <span id="reply-author">User</span></span>
-              <span id="reply-content" class="banner-text">Original message snippet</span>
+
+              <span class="banner-author">
+                Replying to
+                <span id="reply-author">User</span>
+              </span>
+
+              <span
+                id="reply-content"
+                class="banner-text"
+              >
+                Original message snippet
+              </span>
+
             </div>
-            <button id="btn-cancel-reply" class="icon-btn" style="width:24px; height:24px;"><span data-icon="x"></span></button>
+
+            <button
+              id="btn-cancel-reply"
+              class="icon-btn"
+              style="width:24px; height:24px;"
+            >
+              <span data-icon="x"></span>
+            </button>
+
           </div>
 
-          <!-- Edit Preview Banner -->
-          <div id="edit-preview-bar" class="preview-banner hidden">
+
+          <!-- Edit Preview -->
+          <div
+            id="edit-preview-bar"
+            class="preview-banner hidden"
+          >
+
             <div class="banner-content">
-              <span class="banner-author">Editing Message</span>
-              <span id="edit-content" class="banner-text">Original text</span>
+
+              <span class="banner-author">
+                Editing Message
+              </span>
+
+              <span
+                id="edit-content"
+                class="banner-text"
+              >
+                Original text
+              </span>
+
             </div>
-            <button id="btn-cancel-edit" class="icon-btn" style="width:24px; height:24px;"><span data-icon="x"></span></button>
+
+            <button
+              id="btn-cancel-edit"
+              class="icon-btn"
+              style="width:24px; height:24px;"
+            >
+              <span data-icon="x"></span>
+            </button>
+
           </div>
 
-          <!-- Pending Attachment Preview Chips -->
-          <div id="attachment-preview-bar" class="attachment-preview-chips hidden">
-            <div id="attachment-previews" style="display: flex; gap: 0.5rem; flex-wrap: wrap;"></div>
+
+          <!-- Attachment Preview -->
+          <div
+            id="attachment-preview-bar"
+            class="attachment-preview-chips hidden"
+          >
+
+            <div
+              id="attachment-previews"
+              style="display:flex; gap:0.5rem; flex-wrap:wrap;"
+            ></div>
+
           </div>
+
 
           <!-- Input Controls -->
           <div class="chat-input-controls">
-            <!-- Hidden File Input -->
-            <input type="file" id="file-input" class="hidden" accept="image/*,.pdf,.doc,.docx,.txt,.zip" />
-            <button id="btn-attachment" class="icon-btn" title="Attach file or image"><span data-icon="paperclip"></span></button>
 
-            <!-- Emoji Picker Button & Popup -->
-            <button id="btn-emoji" class="icon-btn" title="Insert emoji"><span data-icon="smile"></span></button>
-            <div id="emoji-picker-popup" class="emoji-picker-container hidden">
+            <input
+              type="file"
+              id="file-input"
+              class="hidden"
+              accept="image/*,.pdf,.doc,.docx,.txt,.zip"
+            >
+
+            <button
+              id="btn-attachment"
+              class="icon-btn"
+              title="Attach file or image"
+            >
+              <span data-icon="paperclip"></span>
+            </button>
+
+
+            <!-- Emoji Picker -->
+            <button
+              id="btn-emoji"
+              class="icon-btn"
+              title="Insert emoji"
+            >
+              <span data-icon="smile"></span>
+            </button>
+
+            <div
+              id="emoji-picker-popup"
+              class="emoji-picker-container hidden"
+            >
               <button class="emoji-btn">👍</button>
               <button class="emoji-btn">❤️</button>
               <button class="emoji-btn">😂</button>
@@ -162,504 +502,1815 @@
               <button class="emoji-btn">💯</button>
             </div>
 
+
             <!-- Message Textarea -->
-            <textarea 
-              id="message-input" 
-              class="message-textarea" 
+            <textarea
+              id="message-input"
+              class="message-textarea"
               placeholder="Write a message…"
-              aria-label="Message" 
+              aria-label="Message"
               rows="1"
             ></textarea>
 
+
             <!-- Send Button -->
-            <button id="btn-send-message" class="btn-send" title="Send message"><span data-icon="send"></span></button>
+            <button
+              id="btn-send-message"
+              class="btn-send"
+              title="Send message"
+            >
+              <span data-icon="send"></span>
+            </button>
+
           </div>
-          <div class="composer-caption">A little thought goes a long way.<span>Enter to send · Shift + Enter for a new line</span></div>
+
+
+          <div class="composer-caption">
+            A little thought goes a long way.
+            <span>
+              Enter to send · Shift + Enter for a new line
+            </span>
+          </div>
+
         </footer>
 
       </div>
+
     </main>
 
   </div>
 
+
+  <!-- ========================================================= -->
   <!-- CALL OVERLAY: Incoming Call Banner -->
-  <div id="incoming-call-overlay" class="incoming-call-overlay">
+  <!-- ========================================================= -->
+
+  <div
+    id="incoming-call-overlay"
+    class="incoming-call-overlay"
+  >
+
     <div class="incoming-caller-avatar-wrap">
+
       <div class="pulse-ring"></div>
-      <img id="incoming-caller-avatar" src="" alt="Caller" class="incoming-caller-avatar" />
+
+      <img
+        id="incoming-caller-avatar"
+        src=""
+        alt="Caller"
+        class="incoming-caller-avatar"
+      >
+
     </div>
+
+
     <div class="incoming-caller-info">
-      <span id="incoming-caller-name" class="incoming-caller-name">User</span>
-      <span id="incoming-call-type" class="incoming-call-type">Incoming Call...</span>
+
+      <span
+        id="incoming-caller-name"
+        class="incoming-caller-name"
+      >
+        User
+      </span>
+
+      <span
+        id="incoming-call-type"
+        class="incoming-call-type"
+      >
+        Incoming Call...
+      </span>
+
     </div>
+
+
     <div class="incoming-call-actions">
-      <button id="btn-accept-call" class="btn-call-accept" title="Accept Call"><span data-icon="phone"></span></button>
-      <button id="btn-decline-call" class="btn-call-decline" title="Decline Call"><span data-icon="x"></span></button>
+
+      <button
+        id="btn-accept-call"
+        class="btn-call-accept"
+        title="Accept Call"
+      >
+        <span data-icon="phone"></span>
+      </button>
+
+      <button
+        id="btn-decline-call"
+        class="btn-call-decline"
+        title="Decline Call"
+      >
+        <span data-icon="x"></span>
+      </button>
+
     </div>
+
   </div>
 
-  <!-- CALL MODAL: Fullscreen Active Video & Voice Call Stage -->
-  <div id="call-modal-overlay" class="call-modal-overlay">
+
+  <!-- ========================================================= -->
+  <!-- CALL MODAL: Active Voice / Video Call -->
+  <!-- ========================================================= -->
+
+  <div
+    id="call-modal-overlay"
+    class="call-modal-overlay"
+  >
+
     <div class="call-modal-container">
+
+
+      <!-- Call Header -->
       <div class="call-header-info">
-        <h3 id="call-peer-name" class="call-peer-name">User</h3>
-        <span id="call-timer" class="call-status-timer">Calling...</span>
+
+        <h3
+          id="call-peer-name"
+          class="call-peer-name"
+        >
+          User
+        </h3>
+
+        <span
+          id="call-timer"
+          class="call-status-timer"
+        >
+          Calling...
+        </span>
+
       </div>
+
+
+      <!-- ===================================================== -->
+      <!-- Call Media Stage -->
+      <!-- ===================================================== -->
 
       <div class="call-media-stage">
-        <!-- Video Mode -->
-        <div id="video-call-stage" style="width: 100%; height: 100%; position: relative;">
-          <video id="remote-video-el" class="remote-video" autoplay playsinline></video>
-          <video id="local-video-el" class="local-video-pip" autoplay playsinline muted></video>
+
+
+        <!-- ================= VIDEO MODE ================= -->
+
+        <div
+          id="video-call-stage"
+          style="
+            width:100%;
+            height:100%;
+            position:relative;
+          "
+        >
+
+          <!-- Remote video -->
+          <video
+            id="remote-video-el"
+            class="remote-video"
+            autoplay
+            playsinline
+          ></video>
+
+
+          <!-- Local video -->
+          <video
+            id="local-video-el"
+            class="local-video-pip"
+            autoplay
+            playsinline
+            muted
+          ></video>
+
         </div>
-        <!-- Voice Mode -->
-        <div id="voice-call-stage" class="voice-call-avatar-stage hidden">
-          <img id="voice-call-avatar" src="" class="voice-avatar-circle" />
+
+
+        <!-- ================= VOICE MODE ================= -->
+
+        <div
+          id="voice-call-stage"
+          class="voice-call-avatar-stage hidden"
+        >
+
+          <img
+            id="voice-call-avatar"
+            src=""
+            class="voice-avatar-circle"
+            alt="Call participant"
+          >
+
+
+          <!--
+            IMPORTANT:
+            Dedicated remote audio element for voice calls.
+
+            The calls.js file must attach the WebRTC remoteStream
+            to this element:
+
+              remoteAudio.srcObject = remoteStream;
+
+            and call:
+
+              remoteAudio.play();
+
+            This element is intentionally visually hidden by default.
+          -->
+          <audio
+            id="remote-audio-el"
+            autoplay
+            playsinline
+          ></audio>
+
         </div>
+
       </div>
 
+
+      <!-- ===================================================== -->
       <!-- Call Controls -->
+      <!-- ===================================================== -->
+
       <div class="call-controls-bar">
-        <button id="btn-call-mute-mic" class="call-control-btn" title="Mute/Unmute Mic"><span data-icon="mic"></span></button>
-        <button id="btn-call-toggle-cam" class="call-control-btn" title="Turn Camera On/Off"><span data-icon="video"></span></button>
-        <button id="btn-call-switch-cam" class="call-control-btn" title="Switch Camera"><span data-icon="refresh"></span></button>
-        <button id="btn-call-end" class="call-control-btn btn-end-call" title="End Call"><span data-icon="phone"></span></button>
+
+        <button
+          id="btn-call-mute-mic"
+          class="call-control-btn"
+          title="Mute/Unmute Mic"
+        >
+          <span data-icon="mic"></span>
+        </button>
+
+
+        <button
+          id="btn-call-toggle-cam"
+          class="call-control-btn"
+          title="Turn Camera On/Off"
+        >
+          <span data-icon="video"></span>
+        </button>
+
+
+        <button
+          id="btn-call-switch-cam"
+          class="call-control-btn"
+          title="Switch Camera"
+        >
+          <span data-icon="refresh"></span>
+        </button>
+
+
+        <button
+          id="btn-call-end"
+          class="call-control-btn btn-end-call"
+          title="End Call"
+        >
+          <span data-icon="phone"></span>
+        </button>
+
       </div>
+
     </div>
+
   </div>
 
+
+  <!-- ========================================================= -->
   <!-- STORIES MODAL: Fullscreen Story Viewer -->
-  <div id="story-viewer-overlay" class="story-viewer-overlay">
+  <!-- ========================================================= -->
+
+  <div
+    id="story-viewer-overlay"
+    class="story-viewer-overlay"
+  >
+
     <div class="story-viewer-card">
+
+
       <!-- Segmented Progress Bar -->
-      <div id="story-progress-container" class="story-progress-container"></div>
+      <div
+        id="story-progress-container"
+        class="story-progress-container"
+      ></div>
+
 
       <!-- Story Header -->
       <div class="story-viewer-header">
+
         <div class="story-author-info">
-          <img id="story-author-avatar" src="" class="story-author-avatar" />
-          <span id="story-author-name" class="story-author-name">User</span>
-          <span id="story-time-ago" class="story-time-ago">Just now</span>
+
+          <img
+            id="story-author-avatar"
+            src=""
+            class="story-author-avatar"
+            alt="Story author"
+          >
+
+          <span
+            id="story-author-name"
+            class="story-author-name"
+          >
+            User
+          </span>
+
+          <span
+            id="story-time-ago"
+            class="story-time-ago"
+          >
+            Just now
+          </span>
+
         </div>
+
+
         <div class="story-header-actions">
-          <button id="btn-delete-story" class="story-icon-btn hidden" title="Delete Story"><span data-icon="trash"></span></button>
-          <button id="btn-close-story-viewer" class="story-icon-btn" title="Close"><span data-icon="x"></span></button>
+
+          <button
+            id="btn-delete-story"
+            class="story-icon-btn hidden"
+            title="Delete Story"
+          >
+            <span data-icon="trash"></span>
+          </button>
+
+          <button
+            id="btn-close-story-viewer"
+            class="story-icon-btn"
+            title="Close"
+          >
+            <span data-icon="x"></span>
+          </button>
+
         </div>
+
       </div>
 
-      <!-- Media Stage -->
-      <div id="story-media-stage" class="story-media-stage">
-        <div id="story-tap-left" class="story-tap-zone story-tap-left"></div>
-        <div id="story-tap-right" class="story-tap-zone story-tap-right"></div>
+
+      <!-- Story Media -->
+      <div
+        id="story-media-stage"
+        class="story-media-stage"
+      >
+
+        <div
+          id="story-tap-left"
+          class="story-tap-zone story-tap-left"
+        ></div>
+
+        <div
+          id="story-tap-right"
+          class="story-tap-zone story-tap-right"
+        ></div>
+
       </div>
+
 
       <!-- Story Caption -->
-      <div id="story-caption-overlay" class="story-caption-overlay hidden"></div>
+      <div
+        id="story-caption-overlay"
+        class="story-caption-overlay hidden"
+      ></div>
 
-      <!-- Story Footer: Views (for author) or Reply (for friends) -->
+
+      <!-- Story Footer -->
       <div class="story-viewer-footer">
-        <button id="story-views-pill" class="story-views-pill hidden">
-          <span><span data-icon="eye"></span></span> <span id="story-views-count-text">0 views</span>
+
+        <button
+          id="story-views-pill"
+          class="story-views-pill hidden"
+        >
+          <span>
+            <span data-icon="eye"></span>
+          </span>
+
+          <span id="story-views-count-text">
+            0 views
+          </span>
         </button>
-        <form id="story-reply-form" class="story-reply-form hidden">
-          <input type="text" id="story-reply-input" class="story-reply-input" placeholder="Reply to story..." autocomplete="off" />
-          <button type="submit" class="btn btn-sm btn-primary">Send</button>
+
+
+        <form
+          id="story-reply-form"
+          class="story-reply-form hidden"
+        >
+
+          <input
+            type="text"
+            id="story-reply-input"
+            class="story-reply-input"
+            placeholder="Reply to story..."
+            autocomplete="off"
+          >
+
+          <button
+            type="submit"
+            class="btn btn-sm btn-primary"
+          >
+            Send
+          </button>
+
         </form>
+
       </div>
 
-      <!-- Viewers Drawer (Author only) -->
-      <div id="story-viewers-drawer" class="story-viewers-drawer">
+
+      <!-- Viewers Drawer -->
+      <div
+        id="story-viewers-drawer"
+        class="story-viewers-drawer"
+      >
+
         <div class="drawer-header">
+
           <span>Story Viewers</span>
-          <button id="btn-close-viewers-drawer" class="icon-btn" style="width:24px;height:24px;"><span data-icon="x"></span></button>
+
+          <button
+            id="btn-close-viewers-drawer"
+            class="icon-btn"
+            style="width:24px;height:24px;"
+          >
+            <span data-icon="x"></span>
+          </button>
+
         </div>
+
         <div id="story-viewers-list"></div>
+
       </div>
+
     </div>
+
   </div>
 
+
+  <!-- ========================================================= -->
   <!-- STORIES MODAL: Create New Story -->
-  <div id="modal-create-story" class="modal-overlay">
+  <!-- ========================================================= -->
+
+  <div
+    id="modal-create-story"
+    class="modal-overlay"
+  >
+
     <div class="modal-card">
+
       <div class="modal-header">
-        <h3 class="modal-title">Create Status Story</h3>
-        <button class="icon-btn modal-close"><span data-icon="x"></span></button>
+
+        <h3 class="modal-title">
+          Create Status Story
+        </h3>
+
+        <button class="icon-btn modal-close">
+          <span data-icon="x"></span>
+        </button>
+
       </div>
+
+
       <div class="modal-body">
+
         <div class="form-group">
-          <label class="form-label">Select Photo or Video (Expires in 24 hours)</label>
-          <input type="file" id="story-file-input" class="form-input" accept="image/*,video/*" required />
+
+          <label class="form-label">
+            Select Photo or Video (Expires in 24 hours)
+          </label>
+
+          <input
+            type="file"
+            id="story-file-input"
+            class="form-input"
+            accept="image/*,video/*"
+            required
+          >
+
         </div>
-        <div id="story-create-preview-wrap" style="text-align: center; margin-bottom: 1rem;">
-          <img id="story-create-preview-img" src="" class="hidden" style="max-width: 100%; max-height: 220px; border-radius: var(--radius-md); object-fit: contain;" />
-          <video id="story-create-preview-video" src="" class="hidden" controls style="max-width: 100%; max-height: 220px; border-radius: var(--radius-md);"></video>
+
+
+        <div
+          id="story-create-preview-wrap"
+          style="text-align:center;margin-bottom:1rem;"
+        >
+
+          <img
+            id="story-create-preview-img"
+            src=""
+            class="hidden"
+            style="
+              max-width:100%;
+              max-height:220px;
+              border-radius:var(--radius-md);
+              object-fit:contain;
+            "
+            alt="Story image preview"
+          >
+
+          <video
+            id="story-create-preview-video"
+            src=""
+            class="hidden"
+            controls
+            style="
+              max-width:100%;
+              max-height:220px;
+              border-radius:var(--radius-md);
+            "
+          ></video>
+
         </div>
+
+
         <div class="form-group">
-          <label class="form-label">Caption (Optional)</label>
-          <textarea id="story-create-caption" class="form-textarea" placeholder="Add a caption to your story..."></textarea>
+
+          <label class="form-label">
+            Caption (Optional)
+          </label>
+
+          <textarea
+            id="story-create-caption"
+            class="form-textarea"
+            placeholder="Add a caption to your story..."
+          ></textarea>
+
         </div>
+
       </div>
+
+
       <div class="modal-footer">
-        <button class="btn btn-secondary modal-close">Cancel</button>
-        <button id="btn-submit-story" class="btn btn-primary">Post Story</button>
+
+        <button
+          class="btn btn-secondary modal-close"
+        >
+          Cancel
+        </button>
+
+        <button
+          id="btn-submit-story"
+          class="btn btn-primary"
+        >
+          Post Story
+        </button>
+
       </div>
+
     </div>
+
   </div>
 
+
+  <!-- ========================================================= -->
   <!-- MODAL: New Direct Chat -->
-  <div id="modal-new-chat" class="modal-overlay">
+  <!-- ========================================================= -->
+
+  <div
+    id="modal-new-chat"
+    class="modal-overlay"
+  >
+
     <div class="modal-card">
+
       <div class="modal-header">
-        <h3 class="modal-title">New Conversation</h3>
-        <button class="icon-btn modal-close"><span data-icon="x"></span></button>
+
+        <h3 class="modal-title">
+          New Conversation
+        </h3>
+
+        <button class="icon-btn modal-close">
+          <span data-icon="x"></span>
+        </button>
+
       </div>
+
+
       <div class="modal-body">
-        <div class="search-input-wrap" style="margin-bottom: 1rem;">
-          <span class="search-icon"><span data-icon="search"></span></span>
-          <input type="text" id="search-users-input" class="form-input" placeholder="Search by username or email..." />
+
+        <div
+          class="search-input-wrap"
+          style="margin-bottom:1rem;"
+        >
+
+          <span class="search-icon">
+            <span data-icon="search"></span>
+          </span>
+
+          <input
+            type="text"
+            id="search-users-input"
+            class="form-input"
+            placeholder="Search by username or email..."
+          >
+
         </div>
-        <div id="user-search-results" class="user-search-results" style="max-height: 320px; overflow-y: auto;">
-          <div class="empty-list-notice">Type to search users</div>
+
+
+        <div
+          id="user-search-results"
+          class="user-search-results"
+          style="max-height:320px;overflow-y:auto;"
+        >
+
+          <div class="empty-list-notice">
+            Type to search users
+          </div>
+
         </div>
+
       </div>
+
     </div>
+
   </div>
 
+
+  <!-- ========================================================= -->
   <!-- MODAL: New Group -->
-  <div id="modal-new-group" class="modal-overlay">
+  <!-- ========================================================= -->
+
+  <div
+    id="modal-new-group"
+    class="modal-overlay"
+  >
+
     <div class="modal-card">
+
       <div class="modal-header">
-        <h3 class="modal-title">Create Group Chat</h3>
-        <button class="icon-btn modal-close"><span data-icon="x"></span></button>
+
+        <h3 class="modal-title">
+          Create Group Chat
+        </h3>
+
+        <button class="icon-btn modal-close">
+          <span data-icon="x"></span>
+        </button>
+
       </div>
+
+
       <div class="modal-body">
+
         <div class="form-group">
-          <label class="form-label">Group Name</label>
-          <input type="text" id="new-group-name" class="form-input" placeholder="e.g. CSE 2027" required />
+
+          <label class="form-label">
+            Group Name
+          </label>
+
+          <input
+            type="text"
+            id="new-group-name"
+            class="form-input"
+            placeholder="e.g. CSE 2027"
+            required
+          >
+
         </div>
+
+
         <div class="form-group">
-          <label class="form-label">Description (Optional)</label>
-          <input type="text" id="new-group-desc" class="form-input" placeholder="e.g. Batch Study & Project Group" />
+
+          <label class="form-label">
+            Description (Optional)
+          </label>
+
+          <input
+            type="text"
+            id="new-group-desc"
+            class="form-input"
+            placeholder="e.g. Batch Study & Project Group"
+          >
+
         </div>
+
+
         <div class="form-group">
-          <label class="form-label">Select Initial Members</label>
-          <div id="group-member-checklist" class="member-checklist">
+
+          <label class="form-label">
+            Select Initial Members
+          </label>
+
+          <div
+            id="group-member-checklist"
+            class="member-checklist"
+          >
             <!-- Populated dynamically -->
           </div>
+
         </div>
+
       </div>
+
+
       <div class="modal-footer">
-        <button class="btn btn-secondary btn-modal-cancel">Cancel</button>
-        <button id="btn-create-group-submit" class="btn btn-primary">Create Group</button>
+
+        <button
+          class="btn btn-secondary btn-modal-cancel"
+        >
+          Cancel
+        </button>
+
+        <button
+          id="btn-create-group-submit"
+          class="btn btn-primary"
+        >
+          Create Group
+        </button>
+
       </div>
+
     </div>
+
   </div>
 
+
+  <!-- ========================================================= -->
   <!-- MODAL: Search Messages -->
-  <div id="modal-search-messages" class="modal-overlay">
+  <!-- ========================================================= -->
+
+  <div
+    id="modal-search-messages"
+    class="modal-overlay"
+  >
+
     <div class="modal-card">
+
       <div class="modal-header">
-        <h3 class="modal-title">Search Messages</h3>
-        <button class="icon-btn modal-close"><span data-icon="x"></span></button>
+
+        <h3 class="modal-title">
+          Search Messages
+        </h3>
+
+        <button class="icon-btn modal-close">
+          <span data-icon="x"></span>
+        </button>
+
       </div>
+
+
       <div class="modal-body">
-        <div class="search-input-wrap" style="margin-bottom: 1rem;">
-          <span class="search-icon"><span data-icon="search"></span></span>
-          <input type="text" id="search-query-input" class="form-input" placeholder="Search keywords in all chats..." />
+
+        <div
+          class="search-input-wrap"
+          style="margin-bottom:1rem;"
+        >
+
+          <span class="search-icon">
+            <span data-icon="search"></span>
+          </span>
+
+          <input
+            type="text"
+            id="search-query-input"
+            class="form-input"
+            placeholder="Search keywords in all chats..."
+          >
+
         </div>
-        <div id="search-messages-results" style="max-height: 320px; overflow-y: auto;">
-          <div class="empty-list-notice">Type a keyword to search</div>
+
+
+        <div
+          id="search-messages-results"
+          style="max-height:320px;overflow-y:auto;"
+        >
+
+          <div class="empty-list-notice">
+            Type a keyword to search
+          </div>
+
         </div>
+
       </div>
+
     </div>
+
   </div>
 
+
+  <!-- ========================================================= -->
   <!-- MODAL: Group / Conversation Info -->
-  <div id="modal-group-info" class="modal-overlay details-panel">
-    <div class="modal-card">
-      <div class="modal-header">
-        <h3 class="modal-title">Conversation Details</h3>
-        <button class="icon-btn modal-close"><span data-icon="x"></span></button>
-      </div>
-      <div class="modal-body" style="text-align: center;">
-        <img id="group-info-avatar" src="" class="avatar-preview-img" style="margin: 0 auto 0.75rem auto;" />
-        <h4 id="group-info-name" style="font-size: 1.15rem; font-weight: 600;">Name</h4>
-        <p id="group-info-desc" style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1.5rem;">Description</p>
+  <!-- ========================================================= -->
 
-        <div class="details-section"><h5>Shared in this conversation</h5><div id="shared-content-list" class="shared-content-list"></div><p class="details-caption">From loaded message history</p></div>
-        <!-- Members section for groups -->
-        <div id="group-members-section" class="hidden" style="text-align: left;">
-          <h5 style="font-size: 0.9rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--text-secondary);">Group Members</h5>
-          <div id="group-members-list" class="members-list"></div>
+  <div
+    id="modal-group-info"
+    class="modal-overlay details-panel"
+  >
+
+    <div class="modal-card">
+
+      <div class="modal-header">
+
+        <h3 class="modal-title">
+          Conversation Details
+        </h3>
+
+        <button class="icon-btn modal-close">
+          <span data-icon="x"></span>
+        </button>
+
+      </div>
+
+
+      <div
+        class="modal-body"
+        style="text-align:center;"
+      >
+
+        <img
+          id="group-info-avatar"
+          src=""
+          class="avatar-preview-img"
+          style="margin:0 auto 0.75rem auto;"
+          alt="Conversation avatar"
+        >
+
+        <h4
+          id="group-info-name"
+          style="font-size:1.15rem;font-weight:600;"
+        >
+          Name
+        </h4>
+
+        <p
+          id="group-info-desc"
+          style="
+            color:var(--text-secondary);
+            font-size:0.85rem;
+            margin-bottom:1.5rem;
+          "
+        >
+          Description
+        </p>
+
+
+        <div class="details-section">
+
+          <h5>
+            Shared in this conversation
+          </h5>
+
+          <div
+            id="shared-content-list"
+            class="shared-content-list"
+          ></div>
+
+          <p class="details-caption">
+            From loaded message history
+          </p>
+
         </div>
+
+
+        <div
+          id="group-members-section"
+          class="hidden"
+          style="text-align:left;"
+        >
+
+          <h5
+            style="
+              font-size:0.9rem;
+              font-weight:600;
+              margin-bottom:0.5rem;
+              color:var(--text-secondary);
+            "
+          >
+            Group Members
+          </h5>
+
+          <div
+            id="group-members-list"
+            class="members-list"
+          ></div>
+
+        </div>
+
       </div>
-      <div class="modal-footer" style="justify-content: space-between;">
-        <button id="btn-block-contact" class="btn btn-danger hidden">Block User</button>
-        <button id="btn-leave-group" class="btn btn-danger hidden">Leave Group</button>
-        <button class="btn btn-secondary modal-close">Close</button>
+
+
+      <div
+        class="modal-footer"
+        style="justify-content:space-between;"
+      >
+
+        <button
+          id="btn-block-contact"
+          class="btn btn-danger hidden"
+        >
+          Block User
+        </button>
+
+        <button
+          id="btn-leave-group"
+          class="btn btn-danger hidden"
+        >
+          Leave Group
+        </button>
+
+        <button
+          class="btn btn-secondary modal-close"
+        >
+          Close
+        </button>
+
       </div>
+
     </div>
+
   </div>
 
+
+  <!-- ========================================================= -->
   <!-- MODAL: Settings -->
-  <div id="modal-settings" class="modal-overlay">
-    <div class="modal-card" style="max-width: 620px;">
+  <!-- ========================================================= -->
+
+  <div
+    id="modal-settings"
+    class="modal-overlay"
+  >
+
+    <div
+      class="modal-card"
+      style="max-width:620px;"
+    >
+
       <div class="modal-header">
-        <h3 class="modal-title">Settings</h3>
-        <button class="icon-btn modal-close"><span data-icon="x"></span></button>
+
+        <h3 class="modal-title">
+          Settings
+        </h3>
+
+        <button class="icon-btn modal-close">
+          <span data-icon="x"></span>
+        </button>
+
       </div>
+
+
       <div class="modal-body">
+
         <div class="settings-layout">
-          <!-- Settings Navigation Tabs -->
+
+
+          <!-- Settings Navigation -->
           <nav class="settings-nav">
-            <button class="settings-tab-btn active" data-tab="profile"><span data-icon="user"></span> Profile</button>
-            <button class="settings-tab-btn" data-tab="privacy"><span data-icon="lock"></span> Privacy</button>
-            <button class="settings-tab-btn" data-tab="notifications"><span data-icon="bell"></span> Alerts</button>
-            <button class="settings-tab-btn" data-tab="appearance"><span data-icon="palette"></span> Appearance</button>
-            <button class="settings-tab-btn" data-tab="security"><span data-icon="shield"></span> Security</button>
+
+            <button
+              class="settings-tab-btn active"
+              data-tab="profile"
+            >
+              <span data-icon="user"></span>
+              Profile
+            </button>
+
+            <button
+              class="settings-tab-btn"
+              data-tab="privacy"
+            >
+              <span data-icon="lock"></span>
+              Privacy
+            </button>
+
+            <button
+              class="settings-tab-btn"
+              data-tab="notifications"
+            >
+              <span data-icon="bell"></span>
+              Alerts
+            </button>
+
+            <button
+              class="settings-tab-btn"
+              data-tab="appearance"
+            >
+              <span data-icon="palette"></span>
+              Appearance
+            </button>
+
+            <button
+              class="settings-tab-btn"
+              data-tab="security"
+            >
+              <span data-icon="shield"></span>
+              Security
+            </button>
+
           </nav>
 
-          <!-- Settings Tab Panes -->
+
+          <!-- Settings Content -->
           <div class="settings-content">
-            
-            <div id="pane-appearance" class="settings-pane"><h3>Make yourself at home</h3><p class="settings-description">Choose the appearance that feels right for you.</p><div class="theme-options"><button data-theme-choice="light"><span data-icon="sun"></span>Light</button><button data-theme-choice="dark"><span data-icon="moon"></span>Dark</button><button data-theme-choice="system"><span data-icon="monitor"></span>System</button></div></div>
-            <!-- Pane 1: Profile -->
-            <div id="pane-profile" class="settings-pane active">
+
+
+            <!-- Appearance -->
+            <div
+              id="pane-appearance"
+              class="settings-pane"
+            >
+
+              <h3>
+                Make yourself at home
+              </h3>
+
+              <p class="settings-description">
+                Choose the appearance that feels right for you.
+              </p>
+
+              <div class="theme-options">
+
+                <button data-theme-choice="light">
+                  <span data-icon="sun"></span>
+                  Light
+                </button>
+
+                <button data-theme-choice="dark">
+                  <span data-icon="moon"></span>
+                  Dark
+                </button>
+
+                <button data-theme-choice="system">
+                  <span data-icon="monitor"></span>
+                  System
+                </button>
+
+              </div>
+
+            </div>
+
+
+            <!-- Profile -->
+            <div
+              id="pane-profile"
+              class="settings-pane active"
+            >
+
               <div class="avatar-upload-wrap">
-                <img id="settings-avatar-preview" src="" class="avatar-preview-img" />
+
+                <img
+                  id="settings-avatar-preview"
+                  src=""
+                  class="avatar-preview-img"
+                  alt="Profile preview"
+                >
+
                 <div>
-                  <label class="btn btn-sm btn-secondary" style="cursor: pointer;">
+
+                  <label
+                    class="btn btn-sm btn-secondary"
+                    style="cursor:pointer;"
+                  >
                     Change Photo
-                    <input type="file" id="settings-avatar-input" class="hidden" accept="image/*" />
+
+                    <input
+                      type="file"
+                      id="settings-avatar-input"
+                      class="hidden"
+                      accept="image/*"
+                    >
                   </label>
-                  <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.35rem;">JPG, PNG, or GIF</p>
+
+                  <p
+                    style="
+                      font-size:0.75rem;
+                      color:var(--text-muted);
+                      margin-top:0.35rem;
+                    "
+                  >
+                    JPG, PNG, or GIF
+                  </p>
+
                 </div>
+
               </div>
+
+
               <div class="form-group">
-                <label class="form-label">Display Name</label>
-                <input type="text" id="settings-display-name" class="form-input" />
+
+                <label class="form-label">
+                  Display Name
+                </label>
+
+                <input
+                  type="text"
+                  id="settings-display-name"
+                  class="form-input"
+                >
+
               </div>
+
+
               <div class="form-group">
-                <label class="form-label">Bio / About</label>
-                <textarea id="settings-bio" class="form-textarea" placeholder="Tell others a little about yourself"></textarea>
+
+                <label class="form-label">
+                  Bio / About
+                </label>
+
+                <textarea
+                  id="settings-bio"
+                  class="form-textarea"
+                  placeholder="Tell others a little about yourself"
+                ></textarea>
+
               </div>
-              <button id="btn-save-profile" class="btn btn-primary btn-sm">Save Profile</button>
+
+
+              <button
+                id="btn-save-profile"
+                class="btn btn-primary btn-sm"
+              >
+                Save Profile
+              </button>
+
             </div>
 
-            <!-- Pane 2: Privacy -->
-            <div id="pane-privacy" class="settings-pane">
-              <div class="switch-group">
-                <div class="switch-label-wrap">
-                  <span class="switch-title">Last Seen Time</span>
-                  <span class="switch-desc">Allow others to see when you were last active</span>
-                </div>
-                <label class="switch">
-                  <input type="checkbox" id="settings-show-last-seen" />
-                  <span class="slider"></span>
-                </label>
-              </div>
+
+            <!-- Privacy -->
+            <div
+              id="pane-privacy"
+              class="settings-pane"
+            >
 
               <div class="switch-group">
+
                 <div class="switch-label-wrap">
-                  <span class="switch-title">Online Status</span>
-                  <span class="switch-desc">Show a green indicator when you are active</span>
+
+                  <span class="switch-title">
+                    Last Seen Time
+                  </span>
+
+                  <span class="switch-desc">
+                    Allow others to see when you were last active
+                  </span>
+
                 </div>
+
                 <label class="switch">
-                  <input type="checkbox" id="settings-show-online" />
+
+                  <input
+                    type="checkbox"
+                    id="settings-show-last-seen"
+                  >
+
                   <span class="slider"></span>
+
                 </label>
+
               </div>
 
+
               <div class="switch-group">
+
                 <div class="switch-label-wrap">
-                  <span class="switch-title">Read Receipts</span>
-                  <span class="switch-desc">Show blue checkmarks when you have read messages</span>
+
+                  <span class="switch-title">
+                    Online Status
+                  </span>
+
+                  <span class="switch-desc">
+                    Show a green indicator when you are active
+                  </span>
+
                 </div>
+
                 <label class="switch">
-                  <input type="checkbox" id="settings-show-read" />
+
+                  <input
+                    type="checkbox"
+                    id="settings-show-online"
+                  >
+
                   <span class="slider"></span>
+
                 </label>
+
               </div>
-              <button id="btn-save-privacy" class="btn btn-primary btn-sm" style="margin-top: 1rem;">Save Privacy</button>
+
+
+              <div class="switch-group">
+
+                <div class="switch-label-wrap">
+
+                  <span class="switch-title">
+                    Read Receipts
+                  </span>
+
+                  <span class="switch-desc">
+                    Show blue checkmarks when you have read messages
+                  </span>
+
+                </div>
+
+                <label class="switch">
+
+                  <input
+                    type="checkbox"
+                    id="settings-show-read"
+                  >
+
+                  <span class="slider"></span>
+
+                </label>
+
+              </div>
+
+
+              <button
+                id="btn-save-privacy"
+                class="btn btn-primary btn-sm"
+                style="margin-top:1rem;"
+              >
+                Save Privacy
+              </button>
+
             </div>
 
-            <!-- Pane 3: Notifications -->
-            <div id="pane-notifications" class="settings-pane">
-              <div class="switch-group">
-                <div class="switch-label-wrap">
-                  <span class="switch-title">Sound Chime</span>
-                  <span class="switch-desc">Play a tone for incoming messages</span>
-                </div>
-                <label class="switch">
-                  <input type="checkbox" id="settings-sound-enabled" />
-                  <span class="slider"></span>
-                </label>
-              </div>
+
+            <!-- Notifications -->
+            <div
+              id="pane-notifications"
+              class="settings-pane"
+            >
 
               <div class="switch-group">
+
                 <div class="switch-label-wrap">
-                  <span class="switch-title">Desktop Notifications</span>
-                  <span class="switch-desc">Show browser push alerts when tab is in background</span>
+
+                  <span class="switch-title">
+                    Sound Chime
+                  </span>
+
+                  <span class="switch-desc">
+                    Play a tone for incoming messages
+                  </span>
+
                 </div>
+
                 <label class="switch">
-                  <input type="checkbox" id="settings-desktop-enabled" />
+
+                  <input
+                    type="checkbox"
+                    id="settings-sound-enabled"
+                  >
+
                   <span class="slider"></span>
+
                 </label>
+
               </div>
-              <button id="btn-save-notifications" class="btn btn-primary btn-sm" style="margin-top: 1rem;">Save Preferences</button>
+
+
+              <div class="switch-group">
+
+                <div class="switch-label-wrap">
+
+                  <span class="switch-title">
+                    Desktop Notifications
+                  </span>
+
+                  <span class="switch-desc">
+                    Show browser push alerts when tab is in background
+                  </span>
+
+                </div>
+
+                <label class="switch">
+
+                  <input
+                    type="checkbox"
+                    id="settings-desktop-enabled"
+                  >
+
+                  <span class="slider"></span>
+
+                </label>
+
+              </div>
+
+
+              <button
+                id="btn-save-notifications"
+                class="btn btn-primary btn-sm"
+                style="margin-top:1rem;"
+              >
+                Save Preferences
+              </button>
+
             </div>
 
-            <!-- Pane 4: Security -->
-            <div id="pane-security" class="settings-pane">
-              <!-- Section 1: Active Sessions & Devices (Telegram-style) -->
+
+            <!-- Security -->
+            <div
+              id="pane-security"
+              class="settings-pane"
+            >
+
+
+              <!-- Active Sessions -->
               <div class="security-card">
+
                 <div class="security-card-header">
-                  <span class="security-card-title">💻 Active Sessions & Devices</span>
-                  <button type="button" id="btn-terminate-other-sessions" class="btn btn-sm btn-secondary" style="font-size: 0.75rem;">
+
+                  <span class="security-card-title">
+                    💻 Active Sessions & Devices
+                  </span>
+
+                  <button
+                    type="button"
+                    id="btn-terminate-other-sessions"
+                    class="btn btn-sm btn-secondary"
+                    style="font-size:0.75rem;"
+                  >
                     Terminate Others
                   </button>
+
                 </div>
-                <p style="font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
+
+
+                <p
+                  style="
+                    font-size:0.8125rem;
+                    color:var(--text-secondary);
+                    margin-bottom:0.75rem;
+                  "
+                >
                   Manage devices where your account is currently logged in.
                 </p>
+
+
                 <div id="sessions-list-container">
-                  <div style="font-size: 0.8125rem; color: var(--text-muted); text-align: center; padding: 0.5rem;">
+
+                  <div
+                    style="
+                      font-size:0.8125rem;
+                      color:var(--text-muted);
+                      text-align:center;
+                      padding:0.5rem;
+                    "
+                  >
                     Loading active sessions...
                   </div>
+
                 </div>
+
               </div>
 
-              <!-- Section 2: Two-Factor Authentication (2FA) -->
+
+              <!-- 2FA -->
               <div class="security-card">
+
                 <div class="security-card-header">
-                  <span class="security-card-title"><span data-icon="shield"></span> Two-Factor Authentication</span>
-                  <span id="twofa-status-badge" class="security-badge inactive">Disabled</span>
+
+                  <span class="security-card-title">
+                    <span data-icon="shield"></span>
+                    Two-Factor Authentication
+                  </span>
+
+                  <span
+                    id="twofa-status-badge"
+                    class="security-badge inactive"
+                  >
+                    Disabled
+                  </span>
+
                 </div>
-                <p style="font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
-                  Require a verification code from Google Authenticator, Authy, or recovery code when logging in.
+
+
+                <p
+                  style="
+                    font-size:0.8125rem;
+                    color:var(--text-secondary);
+                    margin-bottom:0.75rem;
+                  "
+                >
+                  Require a verification code from Google Authenticator,
+                  Authy, or recovery code when logging in.
                 </p>
-                <div style="display: flex; gap: 0.5rem;">
-                  <button type="button" id="btn-open-2fa-setup" class="btn btn-primary btn-sm">
+
+
+                <div
+                  style="display:flex;gap:0.5rem;"
+                >
+
+                  <button
+                    type="button"
+                    id="btn-open-2fa-setup"
+                    class="btn btn-primary btn-sm"
+                  >
                     Enable 2FA
                   </button>
-                  <button type="button" id="btn-disable-2fa" class="btn btn-secondary btn-sm hidden" style="color: #ef4444;">
+
+                  <button
+                    type="button"
+                    id="btn-disable-2fa"
+                    class="btn btn-secondary btn-sm hidden"
+                    style="color:#ef4444;"
+                  >
                     Disable 2FA
                   </button>
+
                 </div>
+
               </div>
 
-              <!-- Section 3: Passkeys / WebAuthn -->
+
+              <!-- Passkeys -->
               <div class="security-card">
+
                 <div class="security-card-header">
-                  <span class="security-card-title"><span data-icon="key"></span> Passkeys (Biometrics)</span>
-                  <button type="button" id="btn-open-add-passkey" class="btn btn-sm btn-primary" style="font-size: 0.75rem;">
+
+                  <span class="security-card-title">
+                    <span data-icon="key"></span>
+                    Passkeys (Biometrics)
+                  </span>
+
+                  <button
+                    type="button"
+                    id="btn-open-add-passkey"
+                    class="btn btn-sm btn-primary"
+                    style="font-size:0.75rem;"
+                  >
                     + Add Passkey
                   </button>
+
                 </div>
-                <p style="font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
-                  Sign in instantly with Face ID, Touch ID, or Windows Hello. Phishing resistant.
+
+
+                <p
+                  style="
+                    font-size:0.8125rem;
+                    color:var(--text-secondary);
+                    margin-bottom:0.75rem;
+                  "
+                >
+                  Sign in instantly with Face ID, Touch ID,
+                  or Windows Hello. Phishing resistant.
                 </p>
+
+
                 <div id="passkeys-list-container">
-                  <div style="font-size: 0.8125rem; color: var(--text-muted); text-align: center; padding: 0.5rem;">
+
+                  <div
+                    style="
+                      font-size:0.8125rem;
+                      color:var(--text-muted);
+                      text-align:center;
+                      padding:0.5rem;
+                    "
+                  >
                     Loading passkeys...
                   </div>
+
                 </div>
+
               </div>
 
-              <!-- Section 4: Password Update -->
+
+              <!-- Password Update -->
               <div class="security-card">
-                <span class="security-card-title" style="margin-bottom: 0.75rem;"><span data-icon="lock"></span> Change Password</span>
+
+                <span
+                  class="security-card-title"
+                  style="margin-bottom:0.75rem;"
+                >
+                  <span data-icon="lock"></span>
+                  Change Password
+                </span>
+
+
                 <div class="form-group">
-                  <label class="form-label">Current Password</label>
-                  <input type="password" id="settings-cur-password" class="form-input" />
+
+                  <label class="form-label">
+                    Current Password
+                  </label>
+
+                  <input
+                    type="password"
+                    id="settings-cur-password"
+                    class="form-input"
+                  >
+
                 </div>
+
+
                 <div class="form-group">
-                  <label class="form-label">New Password</label>
-                  <input type="password" id="settings-new-password" class="form-input" />
+
+                  <label class="form-label">
+                    New Password
+                  </label>
+
+                  <input
+                    type="password"
+                    id="settings-new-password"
+                    class="form-input"
+                  >
+
                 </div>
+
+
                 <div class="form-group">
-                  <label class="form-label">Confirm New Password</label>
-                  <input type="password" id="settings-conf-password" class="form-input" />
+
+                  <label class="form-label">
+                    Confirm New Password
+                  </label>
+
+                  <input
+                    type="password"
+                    id="settings-conf-password"
+                    class="form-input"
+                  >
+
                 </div>
-                <button id="btn-save-password" class="btn btn-primary btn-sm">Update Password</button>
+
+
+                <button
+                  id="btn-save-password"
+                  class="btn btn-primary btn-sm"
+                >
+                  Update Password
+                </button>
+
               </div>
+
             </div>
 
           </div>
+
         </div>
+
       </div>
+
     </div>
+
   </div>
 
+
+  <!-- ========================================================= -->
   <!-- 2FA Setup Modal -->
-  <div id="modal-2fa-setup" class="modal-overlay">
+  <!-- ========================================================= -->
+
+  <div
+    id="modal-2fa-setup"
+    class="modal-overlay"
+  >
+
     <div class="modal-card">
+
       <div class="modal-header">
-        <h3 class="modal-title"><span data-icon="shield"></span> Set Up Two-Factor Authentication</h3>
-        <button class="icon-btn modal-close"><span data-icon="x"></span></button>
+
+        <h3 class="modal-title">
+          <span data-icon="shield"></span>
+          Set Up Two-Factor Authentication
+        </h3>
+
+        <button class="icon-btn modal-close">
+          <span data-icon="x"></span>
+        </button>
+
       </div>
+
+
       <div class="modal-body">
-        <!-- Step 1: Scan QR Code -->
+
+
+        <!-- Step 1 -->
         <div id="setup-2fa-step-1">
-          <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">
-            Scan this QR code with Google Authenticator, Authy, or 1Password:
+
+          <p
+            style="
+              color:var(--text-secondary);
+              font-size:0.875rem;
+              margin-bottom:1rem;
+            "
+          >
+            Scan this QR code with Google Authenticator,
+            Authy, or 1Password:
           </p>
-          <div style="text-align: center; margin: 1rem 0;">
-            <img id="setup-2fa-qr" src="" alt="2FA QR Code" style="width: 200px; height: 200px; border-radius: 8px; border: 1px solid var(--border-color);" />
+
+
+          <div
+            style="
+              text-align:center;
+              margin:1rem 0;
+            "
+          >
+
+            <img
+              id="setup-2fa-qr"
+              src=""
+              alt="2FA QR Code"
+              style="
+                width:200px;
+                height:200px;
+                border-radius:8px;
+                border:1px solid var(--border-color);
+              "
+            >
+
           </div>
-          <div style="font-size: 0.8125rem; color: var(--text-muted); text-align: center; margin-bottom: 1rem;">
-            Can't scan? Key: <code id="setup-2fa-secret" style="font-weight: 600; color: var(--primary-color);"></code>
+
+
+          <div
+            style="
+              font-size:0.8125rem;
+              color:var(--text-muted);
+              text-align:center;
+              margin-bottom:1rem;
+            "
+          >
+
+            Can't scan? Key:
+
+            <code
+              id="setup-2fa-secret"
+              style="
+                font-weight:600;
+                color:var(--primary-color);
+              "
+            ></code>
+
           </div>
+
+
           <div class="form-group">
-            <label class="form-label">Enter 6-Digit Code from App</label>
-            <input type="text" id="setup-2fa-code" class="form-input" placeholder="e.g. 123456" maxlength="6" style="text-align: center; font-size: 1.1rem; letter-spacing: 0.2rem;" />
+
+            <label class="form-label">
+              Enter 6-Digit Code from App
+            </label>
+
+            <input
+              type="text"
+              id="setup-2fa-code"
+              class="form-input"
+              placeholder="e.g. 123456"
+              maxlength="6"
+              style="
+                text-align:center;
+                font-size:1.1rem;
+                letter-spacing:0.2rem;
+              "
+            >
+
           </div>
-          <button type="button" id="btn-confirm-enable-2fa" class="btn btn-primary" style="width: 100%;">
+
+
+          <button
+            type="button"
+            id="btn-confirm-enable-2fa"
+            class="btn btn-primary"
+            style="width:100%;"
+          >
             Verify & Activate 2FA
           </button>
+
         </div>
 
-        <!-- Step 2: Backup Recovery Codes -->
-        <div id="setup-2fa-step-2" class="hidden">
-          <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 0.75rem; margin-bottom: 1rem;">
-            <strong style="color: #1e40af; font-size: 0.875rem;">⚠️ Save your backup recovery codes!</strong>
-            <p style="color: #1e3a8a; font-size: 0.8125rem; margin-top: 0.25rem;">
-              If you lose access to your authenticator app, these codes are the only way to log in. Each code can only be used once.
+
+        <!-- Step 2 -->
+        <div
+          id="setup-2fa-step-2"
+          class="hidden"
+        >
+
+          <div
+            style="
+              background:#eff6ff;
+              border:1px solid #bfdbfe;
+              border-radius:8px;
+              padding:0.75rem;
+              margin-bottom:1rem;
+            "
+          >
+
+            <strong
+              style="
+                color:#1e40af;
+                font-size:0.875rem;
+              "
+            >
+              ⚠️ Save your backup recovery codes!
+            </strong>
+
+            <p
+              style="
+                color:#1e3a8a;
+                font-size:0.8125rem;
+                margin-top:0.25rem;
+              "
+            >
+              If you lose access to your authenticator app,
+              these codes are the only way to log in.
+              Each code can only be used once.
             </p>
+
           </div>
-          <div id="setup-recovery-codes-grid" class="recovery-codes-grid"></div>
-          <div style="display: flex; gap: 0.5rem;">
-            <button type="button" id="btn-copy-recovery-codes" class="btn btn-secondary" style="flex: 1;">Copy Codes</button>
-            <button type="button" id="btn-finish-2fa" class="btn btn-primary" style="flex: 1;">Done</button>
+
+
+          <div
+            id="setup-recovery-codes-grid"
+            class="recovery-codes-grid"
+          ></div>
+
+
+          <div
+            style="
+              display:flex;
+              gap:0.5rem;
+            "
+          >
+
+            <button
+              type="button"
+              id="btn-copy-recovery-codes"
+              class="btn btn-secondary"
+              style="flex:1;"
+            >
+              Copy Codes
+            </button>
+
+            <button
+              type="button"
+              id="btn-finish-2fa"
+              class="btn btn-primary"
+              style="flex:1;"
+            >
+              Done
+            </button>
+
           </div>
+
         </div>
+
       </div>
+
     </div>
+
   </div>
 
+
+  <!-- ========================================================= -->
   <!-- Add Passkey Modal -->
-  <div id="modal-add-passkey" class="modal-overlay">
+  <!-- ========================================================= -->
+
+  <div
+    id="modal-add-passkey"
+    class="modal-overlay"
+  >
+
     <div class="modal-card">
+
       <div class="modal-header">
-        <h3 class="modal-title"><span data-icon="key"></span> Add a Passkey</h3>
-        <button class="icon-btn modal-close"><span data-icon="x"></span></button>
+
+        <h3 class="modal-title">
+          <span data-icon="key"></span>
+          Add a Passkey
+        </h3>
+
+        <button class="icon-btn modal-close">
+          <span data-icon="x"></span>
+        </button>
+
       </div>
+
+
       <div class="modal-body">
-        <p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 1rem;">
-          Register your current device (e.g. MacBook Touch ID, iPhone Face ID, or Windows Hello) as a passkey.
+
+        <p
+          style="
+            font-size:0.875rem;
+            color:var(--text-secondary);
+            margin-bottom:1rem;
+          "
+        >
+          Register your current device
+          (e.g. MacBook Touch ID, iPhone Face ID,
+          or Windows Hello) as a passkey.
         </p>
+
+
         <div class="form-group">
-          <label class="form-label">Passkey Name</label>
-          <input type="text" id="input-passkey-name" class="form-input" placeholder="e.g. MacBook Touch ID" />
+
+          <label class="form-label">
+            Passkey Name
+          </label>
+
+          <input
+            type="text"
+            id="input-passkey-name"
+            class="form-input"
+            placeholder="e.g. MacBook Touch ID"
+          >
+
         </div>
-        <button type="button" id="btn-create-passkey-submit" class="btn btn-primary" style="width: 100%;">
+
+
+        <button
+          type="button"
+          id="btn-create-passkey-submit"
+          class="btn btn-primary"
+          style="width:100%;"
+        >
           Continue with Biometrics / Key
         </button>
+
       </div>
+
     </div>
+
   </div>
 
+
+  <!-- ========================================================= -->
   <!-- Scripts -->
+  <!-- ========================================================= -->
+
   <script src="js/config.js"></script>
   <script src="js/utils.js"></script>
   <script src="js/api.js"></script>
@@ -674,5 +2325,6 @@
   <script src="js/groups.js"></script>
   <script src="js/profile.js"></script>
   <script src="js/chat.js"></script>
+
 </body>
 </html>
