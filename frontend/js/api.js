@@ -8,17 +8,7 @@ const API = {
   setRefreshToken: (token) => localStorage.setItem(CONFIG.REFRESH_TOKEN_KEY || 'chat_refresh_token', token),
   removeRefreshToken: () => localStorage.removeItem(CONFIG.REFRESH_TOKEN_KEY || 'chat_refresh_token'),
 
-  isRefreshing: false,
-  refreshSubscribers: [],
-
-  onRefreshed: (newToken) => {
-    API.refreshSubscribers.forEach(callback => callback(newToken));
-    API.refreshSubscribers = [];
-  },
-
-  addRefreshSubscriber: (callback) => {
-    API.refreshSubscribers.push(callback);
-  },
+  refreshPromise: null,
 
   // Core request handler
   request: async (endpoint, options = {}, isRetry = false) => {
@@ -34,23 +24,30 @@ const API = {
     }
 
     // Default to JSON body if not FormData
-    if (options.body && !(options.body instanceof FormData) && typeof options.body === 'object') {
+    let body = options.body;
+    if (body && !(body instanceof FormData) && typeof body === 'object') {
       headers['Content-Type'] = 'application/json';
-      options.body = JSON.stringify(options.body);
+      body = JSON.stringify(body);
     }
 
     try {
       const response = await fetch(url, {
         ...options,
+        body,
         credentials: 'include', // Ensures HttpOnly cookies are passed and received
         headers
       });
 
       // Handle 401 Unauthorized with token refresh rotation
       if (response.status === 401 && !isRetry && !endpoint.includes('/auth/login') && !endpoint.includes('/auth/refresh') && !endpoint.includes('/auth/logout')) {
-        if (!API.isRefreshing) {
-          API.isRefreshing = true;
-          try {
+        // A concurrent request may have already rotated the token while this
+        // request was in flight. Retry using that token before refreshing again.
+        if (API.getToken() && API.getToken() !== token) {
+          return API.request(endpoint, options, true);
+        }
+
+        if (!API.refreshPromise) {
+          API.refreshPromise = (async () => {
             const refreshPayload = API.getRefreshToken() ? { refresh_token: API.getRefreshToken() } : {};
             const refreshRes = await fetch(`${CONFIG.API_BASE_URL}/auth/refresh`, {
               method: 'POST',
@@ -59,40 +56,35 @@ const API = {
               body: JSON.stringify(refreshPayload)
             });
 
-            if (refreshRes.ok) {
-              const refreshData = await refreshRes.json();
-              if (refreshData.access_token) {
-                API.setToken(refreshData.access_token);
-              }
-              if (refreshData.refresh_token) {
-                API.setRefreshToken(refreshData.refresh_token);
-              }
-              API.isRefreshing = false;
-              API.onRefreshed(refreshData.access_token);
-              return API.request(endpoint, options, true);
+            if (!refreshRes.ok) {
+              throw new Error('Session expired. Please log in again.');
             }
-          } catch (e) {
-            console.warn('Auto-refresh failed:', e);
-          }
-          API.isRefreshing = false;
-        } else {
-          // Queue request until refresh completes
-          return new Promise((resolve, reject) => {
-            API.addRefreshSubscriber(newToken => {
-              options.headers = { ...options.headers, 'Authorization': `Bearer ${newToken}` };
-              resolve(API.request(endpoint, options, true));
-            });
+            const refreshData = await refreshRes.json();
+            if (!refreshData.access_token) {
+              throw new Error('Session expired. Please log in again.');
+            }
+            API.setToken(refreshData.access_token);
+            if (refreshData.refresh_token) {
+              API.setRefreshToken(refreshData.refresh_token);
+            }
+          })().finally(() => {
+            API.refreshPromise = null;
           });
         }
 
-        // Refresh failed: clear credentials and redirect
-        API.removeToken();
-        API.removeRefreshToken();
-        localStorage.removeItem(CONFIG.USER_KEY);
-        if (!window.location.pathname.endsWith('login.html') && !window.location.pathname.endsWith('register.html')) {
-          window.location.href = 'login.html';
+        try {
+          // Every concurrent request settles on either refresh success or failure.
+          await API.refreshPromise;
+        } catch (e) {
+          API.removeToken();
+          API.removeRefreshToken();
+          localStorage.removeItem(CONFIG.USER_KEY);
+          if (!window.location.pathname.endsWith('login.html') && !window.location.pathname.endsWith('register.html')) {
+            window.location.href = 'login.html';
+          }
+          throw new Error('Session expired. Please log in again.');
         }
-        throw new Error('Session expired. Please log in again.');
+        return API.request(endpoint, options, true);
       }
 
       const contentType = response.headers.get('content-type');
@@ -140,25 +132,7 @@ const API = {
     const formData = new FormData();
     formData.append('file', file);
 
-    const token = API.getToken();
-    const headers = {};
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    const response = await fetch(`${CONFIG.API_BASE_URL}/uploads`, {
-      method: 'POST',
-      credentials: 'include',
-      headers,
-      body: formData
-    });
-
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      throw new Error(data.detail || 'Failed to upload file');
-    }
-
-    return await response.json();
+    return API.request('/uploads', { method: 'POST', body: formData });
   },
 
   resolveUrl: (url) => {

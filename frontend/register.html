@@ -3,190 +3,117 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Register | Real-Time Chat</title>
+  <meta name="theme-color" content="#f7f7f5">
+  <meta name="description" content="Relay brings your conversations together. Connect with your people through direct messages, groups, and shared files.">
+  <title>Create account · Relay</title>
   <link rel="stylesheet" href="css/global.css">
   <link rel="stylesheet" href="css/auth.css">
-  <style>
-    .contact-type-toggle {
-      display: flex;
-      background: var(--bg-hover, #f1f5f9);
-      border-radius: 8px;
-      padding: 3px;
-      margin-bottom: 1.25rem;
-    }
-    .contact-type-btn {
-      flex: 1;
-      padding: 0.45rem;
-      border: none;
-      background: transparent;
-      color: var(--text-secondary, #64748b);
-      font-size: 0.8125rem;
-      font-weight: 500;
-      border-radius: 6px;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    }
-    .contact-type-btn.active {
-      background: var(--bg-card, #ffffff);
-      color: var(--primary-color, #6366f1);
-      box-shadow: 0 1px 2px rgba(0,0,0,0.06);
-      font-weight: 600;
-    }
-    .passkey-promo-box {
-      border: 1px solid var(--border-color, #e2e8f0);
-      background: var(--bg-subtle, #f8fafc);
-      padding: 1.25rem;
-      border-radius: 10px;
-      margin-top: 1rem;
-      text-align: center;
-    }
-  </style>
 </head>
-<body class="auth-wrapper">
-  <div class="auth-container">
-    <div class="auth-brand">
-      <div class="auth-brand-logo">💬</div>
-      <h1 class="auth-title">Create Account</h1>
-      <p class="auth-subtitle">Join the real-time conversation</p>
-    </div>
-
-    <!-- Toggle between Email and Phone Number -->
-    <div class="contact-type-toggle">
-      <button type="button" class="contact-type-btn active" data-type="email">📧 Email Address</button>
-      <button type="button" class="contact-type-btn" data-type="phone">📱 Phone Number</button>
-    </div>
-
-    <form id="register-form" class="auth-form">
-      <div class="form-group">
-        <label for="username" class="form-label">Username</label>
-        <input 
-          type="text" 
-          id="username" 
-          name="username" 
-          class="form-input" 
-          placeholder="e.g. rahul_dev" 
-          required 
-          autocomplete="username"
-        />
+<body class="auth-wrapper auth-register">
+  <main class="auth-shell">
+    <aside class="auth-story" aria-label="About Relay">
+      <a href="index.html" class="relay-brand" aria-label="Relay home"><span class="relay-mark"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 4h12a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3h-5l-5 3v-3H6a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 9h8M8 13h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>relay<span class="brand-period">.</span></a>
+      <div class="auth-story-content">
+        <p class="auth-eyebrow">MADE FOR REAL CONNECTION</p>
+        <h2>A little closer.<br>A lot more<br><span>connected.</span></h2>
+        <p class="auth-story-description">A place for your people, your ideas, and the conversations that make a difference.</p>
+        <div class="auth-orbit" aria-hidden="true">
+          <div class="orbit-ring orbit-ring-outer"></div>
+          <div class="orbit-ring orbit-ring-inner"></div>
+          <div class="orbit-center"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 4h12a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3h-5l-5 3v-3H6a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 9h8M8 13h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div>
+          <div class="orbit-node orbit-node-one"><span></span></div>
+          <div class="orbit-node orbit-node-two"><span></span></div>
+          <div class="orbit-node orbit-node-three"><span></span></div>
+          <span class="orbit-label orbit-label-one">Your people.</span>
+          <span class="orbit-label orbit-label-two">Your conversations.</span>
+        </div>
       </div>
+      <div class="auth-story-footer"><span class="story-status-dot"></span>A little less distance. A little more together.</div>
+    </aside>
+    <section class="auth-main" aria-label="Create account">
+      <header class="auth-topbar">
+        <a href="index.html" class="relay-brand mobile-brand" aria-label="Relay home"><span class="relay-mark"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 4h12a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3h-5l-5 3v-3H6a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 9h8M8 13h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>relay<span class="brand-period">.</span></a>
+        <span class="auth-topbar-note">A better space to connect</span>
+        <button type="button" class="icon-btn auth-theme-toggle" data-theme-toggle aria-label="Toggle color theme" title="Change appearance"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.8"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.4 1.4m11.2 11.2L19 19M5 19l1.4-1.4M17.6 6.4 19 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+      </header>
+      <div class="auth-container">
 
-      <div id="group-email" class="form-group">
-        <label for="email" class="form-label">Email Address</label>
-        <input 
-          type="email" 
-          id="email" 
-          name="email" 
-          class="form-input" 
-          placeholder="rahul@example.com" 
-          autocomplete="email"
-        />
+        <div class="auth-brand">
+          <p class="auth-eyebrow">MAKE YOURSELF AT HOME</p>
+          <h1 class="auth-title">A fresh conversation.</h1>
+          <p class="auth-subtitle">Create your account and find your people.</p>
+        </div>
+        <div class="contact-type-toggle" role="group" aria-label="Registration contact method">
+          <button type="button" class="contact-type-btn active" data-type="email" aria-pressed="true">Email address</button>
+          <button type="button" class="contact-type-btn" data-type="phone" aria-pressed="false">Phone number</button>
+        </div>
+        <form id="register-form" class="auth-form">
+          <div class="auth-form-row">
+            <div class="form-group">
+              <label for="username" class="form-label">Username</label>
+              <input type="text" id="username" name="username" class="form-input" placeholder="Your username" required autocomplete="username" />
+            </div>
+            <div class="form-group">
+              <label for="display_name" class="form-label">Name <span class="optional-label">(optional)</span></label>
+              <input type="text" id="display_name" name="display_name" class="form-input" placeholder="Your display name" autocomplete="name" />
+            </div>
+          </div>
+          <div id="group-email" class="form-group">
+            <label for="email" class="form-label">Email address</label>
+            <input type="email" id="email" name="email" class="form-input" placeholder="you@example.com" required autocomplete="email" />
+          </div>
+          <div id="group-phone" class="form-group hidden">
+            <label for="phone" class="form-label">Phone number</label>
+            <input type="tel" id="phone" name="phone" class="form-input" placeholder="+1 415 555 2671" autocomplete="tel" aria-describedby="phone-help" />
+            <p id="phone-help" class="form-help">Include your country code.</p>
+          </div>
+          <div class="form-group">
+            <label for="password" class="form-label">Password <span class="optional-label">(optional)</span></label>
+            <div class="password-input-wrap">
+              <input type="password" id="password" name="password" class="form-input" placeholder="Create a password" autocomplete="new-password" aria-describedby="password-help" />
+              <button type="button" class="password-visibility icon-btn" data-password-target="password" aria-label="Show password" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/></svg></button>
+            </div>
+            <p id="password-help" class="form-help">Prefer to skip it? You can sign in with a one-time code or passkey.</p>
+          </div>
+          <div id="group-confirm-pwd" class="form-group hidden">
+            <label for="confirm_password" class="form-label">Confirm password</label>
+            <input type="password" id="confirm_password" name="confirm_password" class="form-input" placeholder="Enter your password again" autocomplete="new-password" />
+          </div>
+          <button type="submit" id="btn-register-submit" class="btn btn-primary auth-btn-block">Create account</button>
+          <p class="auth-next-step">We'll send a code to verify your account.</p>
+        </form>
+        <div class="auth-footer">Already part of Relay? <a href="login.html" class="auth-link">Sign in <span aria-hidden="true">↗</span></a></div>
       </div>
+      <footer class="auth-page-footer">Conversations that bring us together.</footer>
+    </section>
+  </main>
 
-      <div id="group-phone" class="form-group hidden">
-        <label for="phone" class="form-label">Phone Number</label>
-        <input 
-          type="tel" 
-          id="phone" 
-          name="phone" 
-          class="form-input" 
-          placeholder="+14155552671" 
-          autocomplete="tel"
-        />
-      </div>
-
-      <div class="form-group">
-        <label for="display_name" class="form-label">Display Name (Optional)</label>
-        <input 
-          type="text" 
-          id="display_name" 
-          name="display_name" 
-          class="form-input" 
-          placeholder="e.g. Rahul Sharma" 
-          autocomplete="name"
-        />
-      </div>
-
-      <div class="form-group">
-        <label for="password" class="form-label">Password (Optional)</label>
-        <input 
-          type="password" 
-          id="password" 
-          name="password" 
-          class="form-input" 
-          placeholder="Leave blank for passwordless OTP/Passkey" 
-          autocomplete="new-password"
-        />
-        <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">
-          Optional. You can log in anytime with Email/Phone OTP or Passkeys.
-        </p>
-      </div>
-
-      <div id="group-confirm-pwd" class="form-group hidden">
-        <label for="confirm_password" class="form-label">Confirm Password</label>
-        <input 
-          type="password" 
-          id="confirm_password" 
-          name="confirm_password" 
-          class="form-input" 
-          placeholder="Re-enter password" 
-          autocomplete="new-password"
-        />
-      </div>
-
-      <button type="submit" id="btn-register-submit" class="btn btn-primary auth-btn-block">Continue</button>
-    </form>
-
-    <div class="auth-footer">
-      Already have an account? <a href="login.html" class="auth-link">Sign In</a>
-    </div>
-  </div>
-
-  <!-- OTP Verification Modal -->
   <div id="modal-verify-account" class="modal-overlay">
     <div class="modal-card">
-      <div class="modal-header">
-        <h3 class="modal-title">📩 Verify Your Account</h3>
-      </div>
+      <div class="modal-header"><h2 id="verify-account-title" class="modal-title">Check your inbox</h2></div>
       <div class="modal-body">
-        <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">
-          We sent a 6-digit verification code to <strong id="verify-target-text"></strong>. Please enter it below to activate your account.
-        </p>
-
+        <p class="auth-modal-description">We sent a 6-digit verification code to <strong id="verify-target-text"></strong>. Enter it below to activate your account.</p>
         <div class="form-group">
-          <label class="form-label">6-Digit Verification Code</label>
-          <input 
-            type="text" 
-            id="register-otp-input" 
-            class="form-input" 
-            placeholder="e.g. 123456" 
-            maxlength="6"
-            style="letter-spacing: 0.25rem; font-size: 1.25rem; text-align: center;" 
-          />
-          <p id="register-demo-hint" style="font-size: 0.75rem; color: var(--primary-color); margin-top: 0.4rem; cursor: pointer;"></p>
+          <label for="register-otp-input" class="form-label">Verification code</label>
+          <input type="text" id="register-otp-input" class="form-input code-input" placeholder="000000" maxlength="6" inputmode="numeric" autocomplete="one-time-code" />
+          <p id="register-demo-hint" class="auth-code-hint"></p>
         </div>
-
-        <button type="button" id="btn-confirm-otp" class="btn btn-primary" style="width: 100%;">
-          Verify & Activate Account
-        </button>
-
-        <!-- Post-Verification Passkey Setup Prompt -->
+        <button type="button" id="btn-confirm-otp" class="btn btn-primary auth-btn-block">Verify &amp; activate account</button>
         <div id="post-verify-passkey-box" class="passkey-promo-box hidden">
-          <div style="font-size: 1.5rem; margin-bottom: 0.35rem;">🔑</div>
-          <h4 style="font-size: 0.95rem; margin-bottom: 0.25rem;">Add a Passkey for 1-Tap Login?</h4>
-          <p style="font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
-            Use Face ID, Touch ID, or Windows Hello for instant, phishing-proof sign ins.
-          </p>
-          <div style="display: flex; gap: 0.5rem; justify-content: center;">
-            <button type="button" id="btn-add-passkey-now" class="btn btn-primary btn-sm">Add Passkey</button>
-            <button type="button" id="btn-skip-passkey" class="btn btn-secondary btn-sm">Go to Chats</button>
+          <span class="passkey-icon-large"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="8" cy="15" r="5" stroke="currentColor" stroke-width="1.8"/><path d="m11.5 11.5 9-9m-4 4 3 3m-6-1 3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <h3>Next time, just tap.</h3>
+          <p>Add a passkey to sign in using Face ID, Touch ID, or Windows Hello.</p>
+          <div class="passkey-promo-actions">
+            <button type="button" id="btn-add-passkey-now" class="btn btn-primary">Add passkey</button>
+            <button type="button" id="btn-skip-passkey" class="btn btn-secondary">Go to chats</button>
           </div>
         </div>
       </div>
     </div>
   </div>
-
   <script src="js/config.js"></script>
   <script src="js/utils.js"></script>
+  <script src="js/ui.js"></script>
   <script src="js/api.js"></script>
   <script src="js/passkeys.js"></script>
   <script src="js/auth.js"></script>
@@ -205,8 +132,12 @@
 
     typeButtons.forEach(btn => {
       btn.addEventListener('click', () => {
-        typeButtons.forEach(b => b.classList.remove('active'));
+        typeButtons.forEach(b => {
+          b.classList.remove('active');
+          b.setAttribute('aria-pressed', 'false');
+        });
         btn.classList.add('active');
+        btn.setAttribute('aria-pressed', 'true');
         contactType = btn.dataset.type;
 
         groupEmail.classList.toggle('hidden', contactType !== 'email');
@@ -295,6 +226,7 @@
         const res = await Auth.register(payload);
         pendingIdentifier = email || phone;
         document.getElementById('verify-target-text').textContent = pendingIdentifier;
+        document.getElementById('verify-account-title').textContent = contactType === 'phone' ? 'Check your messages' : 'Check your inbox';
 
         if (res.demo_otp) {
           const hint = document.getElementById('register-demo-hint');
@@ -307,7 +239,7 @@
         Utils.showToast(err.message, 'error');
       } finally {
         submitBtn.disabled = false;
-        submitBtn.textContent = 'Continue';
+        submitBtn.textContent = 'Create account';
       }
     });
 
@@ -355,6 +287,17 @@
     document.getElementById('btn-skip-passkey').addEventListener('click', () => {
       window.location.href = 'chat.html';
     });
+  
+    document.querySelectorAll('[data-password-target]').forEach(button => {
+      button.addEventListener('click', () => {
+        const input = document.getElementById(button.dataset.passwordTarget);
+        const visible = input.type === 'password';
+        input.type = visible ? 'text' : 'password';
+        button.setAttribute('aria-label', visible ? 'Hide password' : 'Show password');
+        button.setAttribute('aria-pressed', String(visible));
+      });
+    });
+
   </script>
 </body>
 </html>

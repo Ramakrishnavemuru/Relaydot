@@ -108,7 +108,7 @@ class WebRTCClient {
     canvas.height = 480;
     const ctx = canvas.getContext('2d');
 
-    const currentUser = (window.Auth && Auth.getCurrentUser()) || { display_name: 'You', username: 'you' };
+    const currentUser = (typeof Auth !== 'undefined' && Auth.getCurrentUser()) || { display_name: 'You', username: 'you' };
     const name = currentUser.display_name || currentUser.username;
     let wave = 0;
 

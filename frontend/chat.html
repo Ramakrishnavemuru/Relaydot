@@ -3,7 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Real-Time Chat App</title>
+  <title>Relay — Messages</title>
+  <script src="js/icons.js"></script>
+  <script src="js/ui.js"></script>
   <link rel="stylesheet" href="css/global.css">
   <link rel="stylesheet" href="css/chat.css">
   <link rel="stylesheet" href="css/profile.css">
@@ -14,31 +16,36 @@
 <body>
   <div class="chat-app-container">
     
-    <!-- Sidebar -->
-    <aside class="chat-sidebar">
-      <!-- User profile & App actions -->
-      <div class="sidebar-header">
-        <div class="user-profile-badge" id="btn-header-profile" title="View Profile">
-          <div class="avatar-wrap">
-            <img id="my-avatar" src="" alt="Profile" class="avatar-img" />
-            <span id="my-status-dot" class="online-dot online"></span>
-          </div>
-          <div class="user-meta">
-            <span id="my-name" class="user-display-name">Loading...</span>
-            <span class="user-status-label">Online</span>
-          </div>
-        </div>
-
-        <div class="sidebar-actions">
-          <button id="btn-new-chat" class="icon-btn" title="New Chat">💬</button>
-          <button id="btn-new-group" class="icon-btn" title="New Group">👥</button>
-          <button id="btn-settings" class="icon-btn" title="Settings">⚙️</button>
-          <button id="btn-logout" class="icon-btn" title="Sign Out">🚪</button>
-        </div>
+    <nav class="app-rail" aria-label="Main navigation">
+      <a href="chat.html" class="brand-mark" title="Relay home" aria-label="Relay home"><span data-icon="messages"></span></a>
+      <div class="rail-links">
+        <button class="rail-button active" id="nav-messages" title="Messages" aria-label="Messages" aria-current="page"><span data-icon="message"></span><span>Chats</span></button>
+        <button class="rail-button" id="nav-stories" title="Stories" aria-label="Stories"><span data-icon="circle"></span><span>Stories</span></button>
+        <button class="rail-button" id="btn-new-group" title="New group" aria-label="New group"><span data-icon="users"></span><span>Groups</span></button>
       </div>
-
+      <div class="rail-bottom">
+        <button class="icon-btn" data-theme-toggle title="Toggle light or dark theme"><span data-icon="sun"></span></button>
+        <button id="btn-settings" class="icon-btn" title="Settings"><span data-icon="settings"></span></button>
+        <button id="btn-logout" class="icon-btn" title="Sign out"><span data-icon="logout"></span></button>
+        <a href="profile.html" id="btn-header-profile" class="rail-profile" title="Your profile" aria-label="Your profile">
+          <img id="my-avatar" src="" alt="Your profile" class="avatar-img" /><span id="my-status-dot" class="online-dot online"></span>
+        </a>
+      </div>
+    </nav>
+    <aside class="chat-sidebar" aria-label="Conversations">
+      <div class="sidebar-brand"><span>relay<span class="brand-period">.</span></span><span class="workspace-label">YOUR SPACE TO CONNECT</span></div>
+      <div class="sidebar-header">
+        <div><h1>Messages <span id="conversation-count" class="count-label">0</span></h1><p>Good conversations start here.</p></div>
+        <button id="btn-new-chat" class="icon-btn compose-button" title="New conversation"><span data-icon="compose"></span></button>
+      </div>
+      <div class="sidebar-search"><div class="search-input-wrap"><span class="search-icon" data-icon="search"></span><input type="search" id="conv-search-input" class="form-input" placeholder="Search conversations" aria-label="Search conversations" /><kbd>⌘ K</kbd></div></div>
+      <nav class="chat-filters" aria-label="Filter conversations">
+        <button class="chat-filter active" data-filter="all" aria-pressed="true">All chats</button>
+        <button class="chat-filter" data-filter="unread" aria-pressed="false">Unread <span id="unread-count"></span></button>
+        <button class="chat-filter" data-filter="groups" aria-pressed="false">Groups</button>
+      </nav>
       <!-- 24-Hour Stories Carousel Tray -->
-      <div id="stories-tray-container" class="stories-tray-container">
+      <div id="stories-tray-container" class="stories-tray-container hidden">
         <div class="stories-tray-title">
           <span>Stories</span>
           <button id="btn-add-story" class="btn btn-sm btn-secondary" style="padding: 2px 8px; font-size: 0.7rem;">+ Add Story</button>
@@ -48,18 +55,11 @@
         </div>
       </div>
 
-      <!-- Conversations Search -->
-      <div class="sidebar-search">
-        <div class="search-input-wrap">
-          <span class="search-icon">🔍</span>
-          <input type="text" id="conv-search-input" class="form-input" placeholder="Search conversations..." />
-        </div>
-      </div>
-
       <!-- Conversations List -->
       <div id="conversations-list" class="conversations-list">
         <!-- Rendered dynamically -->
       </div>
+      <div class="sidebar-footer"><span class="connection-dot"></span><span id="connection-label" role="status">Connecting…</span><span id="my-name" class="truncate">Your workspace</span></div>
     </aside>
 
     <!-- Main Chat Window Area -->
@@ -67,9 +67,10 @@
       
       <!-- Empty Chat State (No conversation selected) -->
       <div id="empty-chat-state" class="empty-chat-state">
-        <div class="empty-state-icon">💬</div>
-        <h2 class="empty-state-title">Select a Conversation</h2>
-        <p class="empty-state-desc">Choose a chat from the sidebar or click the new chat button to connect with friends.</p>
+        <div class="empty-topline"><span>Your everyday conversations, beautifully connected.</span><span data-icon="messages"></span></div>
+        <div class="empty-content"><div class="empty-illustration" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="illustration-bubble bubble-back"><span></span><span></span><span></span></div><div class="illustration-bubble bubble-front"><span data-icon="message"></span></div><i class="orbit-dot dot-one"></i><i class="orbit-dot dot-two"></i></div>
+        <span class="eyebrow">A LITTLE CLOSER, EVERY DAY</span><h2 class="empty-state-title">Good things start<br>with a conversation.</h2><p class="empty-state-desc">Your people. Your ideas. All in one place.<br>Pick a chat or start something new.</p><button id="btn-empty-new-chat" class="btn btn-primary"><span data-icon="plus"></span>Start a conversation</button><span class="empty-shortcut">Find your next conversation <kbd>⌘ K</kbd></span></div>
+        <div class="empty-bottomline"><span data-icon="message"></span>A calmer place to keep in touch.</div>
       </div>
 
       <!-- Active Chat Window -->
@@ -77,28 +78,30 @@
         
         <!-- Chat Header -->
         <header class="chat-header">
-          <div class="chat-header-info" id="btn-chat-info">
-            <button id="btn-mobile-back" class="icon-btn btn-mobile-back" title="Back to conversations">←</button>
+          <div class="chat-header-info">
+            <button id="btn-mobile-back" class="icon-btn btn-mobile-back" title="Back to conversations"><span data-icon="arrow-left"></span></button>
             <img id="chat-avatar" src="" alt="Avatar" class="chat-header-avatar" />
-            <div class="chat-header-meta">
+            <button class="chat-header-meta" id="btn-chat-info" title="Conversation details">
               <span id="chat-title" class="chat-title">Conversation Name</span>
               <span id="chat-header-status" class="status-text">
                 <span id="chat-subtitle" class="chat-subtitle">Offline</span>
               </span>
-            </div>
+            </button>
           </div>
 
           <div class="chat-header-actions">
             <!-- Voice and Video Call Triggers (Active for direct chats) -->
-            <button id="btn-voice-call" class="icon-btn hidden" title="Voice Call">📞</button>
-            <button id="btn-video-call" class="icon-btn hidden" title="Video Call">📹</button>
-            <button id="btn-search-messages" class="icon-btn" title="Search in messages">🔍</button>
+            <button id="btn-voice-call" class="icon-btn hidden" title="Voice Call"><span data-icon="phone"></span></button>
+            <button id="btn-video-call" class="icon-btn hidden" title="Video Call"><span data-icon="video"></span></button>
+            <button id="btn-details" class="icon-btn" title="Conversation details"><span data-icon="info"></span></button>
+            <button id="btn-search-messages" class="icon-btn" title="Search in messages"><span data-icon="search"></span></button>
           </div>
         </header>
 
+        <div id="connection-banner" class="connection-banner hidden" role="status">Connection interrupted. Reconnecting… <button id="btn-reconnect" class="text-button">Retry now</button></div>
         <!-- Message History Feed -->
         <div id="messages-container" class="messages-container">
-          <div id="messages-list"></div>
+          <button id="btn-load-earlier" class="load-earlier hidden">Load earlier messages</button><div id="messages-list" role="log" aria-label="Messages" aria-live="polite"></div>
         </div>
 
         <!-- Ephemeral Typing Indicator -->
@@ -119,7 +122,7 @@
               <span class="banner-author">Replying to <span id="reply-author">User</span></span>
               <span id="reply-content" class="banner-text">Original message snippet</span>
             </div>
-            <button id="btn-cancel-reply" class="icon-btn" style="width:24px; height:24px;">✕</button>
+            <button id="btn-cancel-reply" class="icon-btn" style="width:24px; height:24px;"><span data-icon="x"></span></button>
           </div>
 
           <!-- Edit Preview Banner -->
@@ -128,7 +131,7 @@
               <span class="banner-author">Editing Message</span>
               <span id="edit-content" class="banner-text">Original text</span>
             </div>
-            <button id="btn-cancel-edit" class="icon-btn" style="width:24px; height:24px;">✕</button>
+            <button id="btn-cancel-edit" class="icon-btn" style="width:24px; height:24px;"><span data-icon="x"></span></button>
           </div>
 
           <!-- Pending Attachment Preview Chips -->
@@ -140,10 +143,10 @@
           <div class="chat-input-controls">
             <!-- Hidden File Input -->
             <input type="file" id="file-input" class="hidden" accept="image/*,.pdf,.doc,.docx,.txt,.zip" />
-            <button id="btn-attachment" class="icon-btn" title="Attach file or image">📎</button>
+            <button id="btn-attachment" class="icon-btn" title="Attach file or image"><span data-icon="paperclip"></span></button>
 
             <!-- Emoji Picker Button & Popup -->
-            <button id="btn-emoji" class="icon-btn" title="Insert emoji">😀</button>
+            <button id="btn-emoji" class="icon-btn" title="Insert emoji"><span data-icon="smile"></span></button>
             <div id="emoji-picker-popup" class="emoji-picker-container hidden">
               <button class="emoji-btn">👍</button>
               <button class="emoji-btn">❤️</button>
@@ -163,13 +166,15 @@
             <textarea 
               id="message-input" 
               class="message-textarea" 
-              placeholder="Type a message..." 
+              placeholder="Write a message…"
+              aria-label="Message" 
               rows="1"
             ></textarea>
 
             <!-- Send Button -->
-            <button id="btn-send-message" class="btn-send" title="Send message">➤</button>
+            <button id="btn-send-message" class="btn-send" title="Send message"><span data-icon="send"></span></button>
           </div>
+          <div class="composer-caption">A little thought goes a long way.<span>Enter to send · Shift + Enter for a new line</span></div>
         </footer>
 
       </div>
@@ -188,8 +193,8 @@
       <span id="incoming-call-type" class="incoming-call-type">Incoming Call...</span>
     </div>
     <div class="incoming-call-actions">
-      <button id="btn-accept-call" class="btn-call-accept" title="Accept Call">📞</button>
-      <button id="btn-decline-call" class="btn-call-decline" title="Decline Call">❌</button>
+      <button id="btn-accept-call" class="btn-call-accept" title="Accept Call"><span data-icon="phone"></span></button>
+      <button id="btn-decline-call" class="btn-call-decline" title="Decline Call"><span data-icon="x"></span></button>
     </div>
   </div>
 
@@ -215,10 +220,10 @@
 
       <!-- Call Controls -->
       <div class="call-controls-bar">
-        <button id="btn-call-mute-mic" class="call-control-btn" title="Mute/Unmute Mic">🎤</button>
-        <button id="btn-call-toggle-cam" class="call-control-btn" title="Turn Camera On/Off">📹</button>
-        <button id="btn-call-switch-cam" class="call-control-btn" title="Switch Camera">🔄</button>
-        <button id="btn-call-end" class="call-control-btn btn-end-call" title="End Call">☎</button>
+        <button id="btn-call-mute-mic" class="call-control-btn" title="Mute/Unmute Mic"><span data-icon="mic"></span></button>
+        <button id="btn-call-toggle-cam" class="call-control-btn" title="Turn Camera On/Off"><span data-icon="video"></span></button>
+        <button id="btn-call-switch-cam" class="call-control-btn" title="Switch Camera"><span data-icon="refresh"></span></button>
+        <button id="btn-call-end" class="call-control-btn btn-end-call" title="End Call"><span data-icon="phone"></span></button>
       </div>
     </div>
   </div>
@@ -237,8 +242,8 @@
           <span id="story-time-ago" class="story-time-ago">Just now</span>
         </div>
         <div class="story-header-actions">
-          <button id="btn-delete-story" class="story-icon-btn hidden" title="Delete Story">🗑️</button>
-          <button id="btn-close-story-viewer" class="story-icon-btn" title="Close">✕</button>
+          <button id="btn-delete-story" class="story-icon-btn hidden" title="Delete Story"><span data-icon="trash"></span></button>
+          <button id="btn-close-story-viewer" class="story-icon-btn" title="Close"><span data-icon="x"></span></button>
         </div>
       </div>
 
@@ -254,7 +259,7 @@
       <!-- Story Footer: Views (for author) or Reply (for friends) -->
       <div class="story-viewer-footer">
         <button id="story-views-pill" class="story-views-pill hidden">
-          <span>👁</span> <span id="story-views-count-text">0 views</span>
+          <span><span data-icon="eye"></span></span> <span id="story-views-count-text">0 views</span>
         </button>
         <form id="story-reply-form" class="story-reply-form hidden">
           <input type="text" id="story-reply-input" class="story-reply-input" placeholder="Reply to story..." autocomplete="off" />
@@ -266,7 +271,7 @@
       <div id="story-viewers-drawer" class="story-viewers-drawer">
         <div class="drawer-header">
           <span>Story Viewers</span>
-          <button id="btn-close-viewers-drawer" class="icon-btn" style="width:24px;height:24px;">✕</button>
+          <button id="btn-close-viewers-drawer" class="icon-btn" style="width:24px;height:24px;"><span data-icon="x"></span></button>
         </div>
         <div id="story-viewers-list"></div>
       </div>
@@ -278,7 +283,7 @@
     <div class="modal-card">
       <div class="modal-header">
         <h3 class="modal-title">Create Status Story</h3>
-        <button class="icon-btn modal-close">✕</button>
+        <button class="icon-btn modal-close"><span data-icon="x"></span></button>
       </div>
       <div class="modal-body">
         <div class="form-group">
@@ -306,11 +311,11 @@
     <div class="modal-card">
       <div class="modal-header">
         <h3 class="modal-title">New Conversation</h3>
-        <button class="icon-btn modal-close">✕</button>
+        <button class="icon-btn modal-close"><span data-icon="x"></span></button>
       </div>
       <div class="modal-body">
         <div class="search-input-wrap" style="margin-bottom: 1rem;">
-          <span class="search-icon">🔍</span>
+          <span class="search-icon"><span data-icon="search"></span></span>
           <input type="text" id="search-users-input" class="form-input" placeholder="Search by username or email..." />
         </div>
         <div id="user-search-results" class="user-search-results" style="max-height: 320px; overflow-y: auto;">
@@ -325,7 +330,7 @@
     <div class="modal-card">
       <div class="modal-header">
         <h3 class="modal-title">Create Group Chat</h3>
-        <button class="icon-btn modal-close">✕</button>
+        <button class="icon-btn modal-close"><span data-icon="x"></span></button>
       </div>
       <div class="modal-body">
         <div class="form-group">
@@ -355,11 +360,11 @@
     <div class="modal-card">
       <div class="modal-header">
         <h3 class="modal-title">Search Messages</h3>
-        <button class="icon-btn modal-close">✕</button>
+        <button class="icon-btn modal-close"><span data-icon="x"></span></button>
       </div>
       <div class="modal-body">
         <div class="search-input-wrap" style="margin-bottom: 1rem;">
-          <span class="search-icon">🔍</span>
+          <span class="search-icon"><span data-icon="search"></span></span>
           <input type="text" id="search-query-input" class="form-input" placeholder="Search keywords in all chats..." />
         </div>
         <div id="search-messages-results" style="max-height: 320px; overflow-y: auto;">
@@ -370,17 +375,18 @@
   </div>
 
   <!-- MODAL: Group / Conversation Info -->
-  <div id="modal-group-info" class="modal-overlay">
+  <div id="modal-group-info" class="modal-overlay details-panel">
     <div class="modal-card">
       <div class="modal-header">
         <h3 class="modal-title">Conversation Details</h3>
-        <button class="icon-btn modal-close">✕</button>
+        <button class="icon-btn modal-close"><span data-icon="x"></span></button>
       </div>
       <div class="modal-body" style="text-align: center;">
         <img id="group-info-avatar" src="" class="avatar-preview-img" style="margin: 0 auto 0.75rem auto;" />
         <h4 id="group-info-name" style="font-size: 1.15rem; font-weight: 600;">Name</h4>
         <p id="group-info-desc" style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1.5rem;">Description</p>
 
+        <div class="details-section"><h5>Shared in this conversation</h5><div id="shared-content-list" class="shared-content-list"></div><p class="details-caption">From loaded message history</p></div>
         <!-- Members section for groups -->
         <div id="group-members-section" class="hidden" style="text-align: left;">
           <h5 style="font-size: 0.9rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--text-secondary);">Group Members</h5>
@@ -400,21 +406,23 @@
     <div class="modal-card" style="max-width: 620px;">
       <div class="modal-header">
         <h3 class="modal-title">Settings</h3>
-        <button class="icon-btn modal-close">✕</button>
+        <button class="icon-btn modal-close"><span data-icon="x"></span></button>
       </div>
       <div class="modal-body">
         <div class="settings-layout">
           <!-- Settings Navigation Tabs -->
           <nav class="settings-nav">
-            <button class="settings-tab-btn active" data-tab="profile">👤 Profile</button>
-            <button class="settings-tab-btn" data-tab="privacy">🔒 Privacy</button>
-            <button class="settings-tab-btn" data-tab="notifications">🔔 Alerts</button>
-            <button class="settings-tab-btn" data-tab="security">🛡️ Security</button>
+            <button class="settings-tab-btn active" data-tab="profile"><span data-icon="user"></span> Profile</button>
+            <button class="settings-tab-btn" data-tab="privacy"><span data-icon="lock"></span> Privacy</button>
+            <button class="settings-tab-btn" data-tab="notifications"><span data-icon="bell"></span> Alerts</button>
+            <button class="settings-tab-btn" data-tab="appearance"><span data-icon="palette"></span> Appearance</button>
+            <button class="settings-tab-btn" data-tab="security"><span data-icon="shield"></span> Security</button>
           </nav>
 
           <!-- Settings Tab Panes -->
           <div class="settings-content">
             
+            <div id="pane-appearance" class="settings-pane"><h3>Make yourself at home</h3><p class="settings-description">Choose the appearance that feels right for you.</p><div class="theme-options"><button data-theme-choice="light"><span data-icon="sun"></span>Light</button><button data-theme-choice="dark"><span data-icon="moon"></span>Dark</button><button data-theme-choice="system"><span data-icon="monitor"></span>System</button></div></div>
             <!-- Pane 1: Profile -->
             <div id="pane-profile" class="settings-pane active">
               <div class="avatar-upload-wrap">
@@ -524,7 +532,7 @@
               <!-- Section 2: Two-Factor Authentication (2FA) -->
               <div class="security-card">
                 <div class="security-card-header">
-                  <span class="security-card-title">🛡️ Two-Factor Authentication</span>
+                  <span class="security-card-title"><span data-icon="shield"></span> Two-Factor Authentication</span>
                   <span id="twofa-status-badge" class="security-badge inactive">Disabled</span>
                 </div>
                 <p style="font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
@@ -543,7 +551,7 @@
               <!-- Section 3: Passkeys / WebAuthn -->
               <div class="security-card">
                 <div class="security-card-header">
-                  <span class="security-card-title">🔑 Passkeys (Biometrics)</span>
+                  <span class="security-card-title"><span data-icon="key"></span> Passkeys (Biometrics)</span>
                   <button type="button" id="btn-open-add-passkey" class="btn btn-sm btn-primary" style="font-size: 0.75rem;">
                     + Add Passkey
                   </button>
@@ -560,7 +568,7 @@
 
               <!-- Section 4: Password Update -->
               <div class="security-card">
-                <span class="security-card-title" style="margin-bottom: 0.75rem;">🔒 Change Password</span>
+                <span class="security-card-title" style="margin-bottom: 0.75rem;"><span data-icon="lock"></span> Change Password</span>
                 <div class="form-group">
                   <label class="form-label">Current Password</label>
                   <input type="password" id="settings-cur-password" class="form-input" />
@@ -587,8 +595,8 @@
   <div id="modal-2fa-setup" class="modal-overlay">
     <div class="modal-card">
       <div class="modal-header">
-        <h3 class="modal-title">🛡️ Set Up Two-Factor Authentication</h3>
-        <button class="icon-btn modal-close">✕</button>
+        <h3 class="modal-title"><span data-icon="shield"></span> Set Up Two-Factor Authentication</h3>
+        <button class="icon-btn modal-close"><span data-icon="x"></span></button>
       </div>
       <div class="modal-body">
         <!-- Step 1: Scan QR Code -->
@@ -633,8 +641,8 @@
   <div id="modal-add-passkey" class="modal-overlay">
     <div class="modal-card">
       <div class="modal-header">
-        <h3 class="modal-title">🔑 Add a Passkey</h3>
-        <button class="icon-btn modal-close">✕</button>
+        <h3 class="modal-title"><span data-icon="key"></span> Add a Passkey</h3>
+        <button class="icon-btn modal-close"><span data-icon="x"></span></button>
       </div>
       <div class="modal-body">
         <p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 1rem;">

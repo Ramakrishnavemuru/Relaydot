@@ -3,101 +3,104 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>My Profile | Real-Time Chat</title>
+  <meta name="theme-color" content="#5b55d6">
+  <title>Your profile · Relay</title>
+  <script src="js/ui.js"></script>
   <link rel="stylesheet" href="css/global.css">
-  <link rel="stylesheet" href="css/profile.css">
   <link rel="stylesheet" href="css/responsive.css">
+  <link rel="stylesheet" href="css/profile.css">
 </head>
-<body style="display: flex; align-items: center; justify-content: center; min-height: 100vh; background: var(--bg-primary); padding: 1.5rem;">
-  <div class="modal-card" style="width: 100%; max-width: 520px;">
-    <div class="modal-header">
-      <h3 class="modal-title">My Profile</h3>
-      <a href="chat.html" class="btn btn-sm btn-secondary">← Back to Chat</a>
-    </div>
-    <div class="modal-body">
-      <div class="avatar-upload-wrap" style="justify-content: center; flex-direction: column; text-align: center; margin-bottom: 2rem;">
-        <img id="profile-page-avatar" src="" class="avatar-preview-img" style="width: 96px; height: 96px;" />
-        <label class="btn btn-sm btn-secondary" style="cursor: pointer; margin-top: 0.75rem;">
-          Upload New Picture
-          <input type="file" id="profile-page-file-input" class="hidden" accept="image/*" />
-        </label>
-      </div>
-
-      <div class="form-group">
-        <label class="form-label">Username</label>
-        <input type="text" id="profile-page-username" class="form-input" disabled style="opacity: 0.7;" />
-      </div>
-
-      <div class="form-group">
-        <label class="form-label">Email</label>
-        <input type="email" id="profile-page-email" class="form-input" disabled style="opacity: 0.7;" />
-      </div>
-
-      <div class="form-group">
-        <label class="form-label">Display Name</label>
-        <input type="text" id="profile-page-display-name" class="form-input" placeholder="Your display name" />
-      </div>
-
-      <div class="form-group">
-        <label class="form-label">Bio</label>
-        <textarea id="profile-page-bio" class="form-textarea" placeholder="Tell everyone something about yourself..."></textarea>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <a href="chat.html" class="btn btn-secondary">Cancel</a>
-      <button id="btn-save-profile-page" class="btn btn-primary">Save Changes</button>
-    </div>
-  </div>
-
+<body class="account-page">
+  <a class="account-skip-link" href="#account-main">Skip to content</a>
+  <header class="account-topbar">
+    <a class="account-brand" href="chat.html" aria-label="Relay, back to messages"><span class="account-brand-mark" data-icon="message" aria-hidden="true"></span>Relay<span class="account-brand-divider"></span><span class="account-brand-context">Your account</span></a>
+    <a href="chat.html" class="btn btn-secondary account-back"><span data-icon="arrow-left" aria-hidden="true"></span><span>Back to messages</span></a>
+  </header>
+  <main id="account-main" class="account-main">
+    <div class="account-page-heading"><p class="account-eyebrow">MAKE YOURSELF AT HOME</p><h1>Your profile</h1><p>A familiar face. A little about you. Make it yours.</p></div>
+    <nav class="account-page-nav" aria-label="Account pages"><a class="active" href="profile.html" aria-current="page"><span data-icon="user" aria-hidden="true"></span>Profile</a><a href="settings.html"><span data-icon="settings" aria-hidden="true"></span>Settings</a></nav>
+    <form id="profile-page-form" class="profile-page-grid">
+      <aside class="account-card profile-summary">
+        <div class="profile-avatar-frame"><img id="profile-page-avatar" class="avatar-preview-img" alt="Your profile picture" /></div>
+        <h2 id="profile-summary-name">Your profile</h2><p id="profile-summary-username" class="profile-summary-username"></p>
+        <label class="btn btn-secondary avatar-upload-button" for="profile-page-file-input"><span data-icon="user" aria-hidden="true"></span><span id="avatar-upload-label">Change photo</span></label>
+        <input type="file" id="profile-page-file-input" class="avatar-file-input" accept="image/*" />
+        <p class="account-help">Choose a photo that helps people recognize you.</p>
+        <div class="profile-visibility-note"><span data-icon="user" aria-hidden="true"></span><p>Your photo, name and bio are visible to people you chat with.</p></div>
+      </aside>
+      <section class="account-card profile-editor" aria-labelledby="profile-editor-title">
+        <div class="account-card-heading"><h2 id="profile-editor-title">Personal details</h2><p>Choose how you appear in conversations.</p></div>
+        <div class="account-card-body">
+          <div class="form-group"><label for="profile-page-display-name" class="form-label">Display name</label><input type="text" id="profile-page-display-name" class="form-input" placeholder="Your name" autocomplete="name" maxlength="100" /><p class="account-help">This is the name people will see in chats.</p></div>
+          <div class="form-group"><label for="profile-page-bio" class="form-label">Bio <span class="field-optional">Optional</span></label><textarea id="profile-page-bio" class="form-textarea" placeholder="A little about yourself…" rows="4"></textarea></div>
+          <div class="account-form-divider"></div>
+          <div class="account-section-heading"><h3>Account information</h3><p>Your sign-in details are shown below.</p></div>
+          <div class="account-fields-grid">
+            <div class="form-group"><label for="profile-page-username" class="form-label">Username</label><input type="text" id="profile-page-username" class="form-input" readonly aria-readonly="true" /></div>
+            <div class="form-group"><label for="profile-page-email" class="form-label">Email address</label><input type="email" id="profile-page-email" class="form-input" readonly aria-readonly="true" /></div>
+          </div>
+        </div>
+        <div class="account-card-footer"><p id="profile-save-status" class="account-help" role="status" aria-live="polite">Changes are saved when you're ready.</p><div class="account-footer-actions"><a href="chat.html" class="btn btn-secondary">Cancel</a><button type="submit" id="btn-save-profile-page" class="btn btn-primary">Save changes</button></div></div>
+      </section>
+    </form>
+    <p class="account-footer-note">A space for better conversations.</p>
+  </main>
   <script src="js/config.js"></script>
   <script src="js/utils.js"></script>
   <script src="js/api.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/profile.js"></script>
   <script>
-    if (Auth.requireAuth()) {
-      const user = Auth.getCurrentUser();
+    (async () => {
+      if (!Auth.requireAuth()) return;
+      let user = Auth.getCurrentUser();
+      if (!user) {
+        try { user = await Auth.fetchMyProfile(); }
+        catch (err) { Utils.showToast('Your profile could not be loaded. Please try again.', 'error'); return; }
+      }
       const avatarEl = document.getElementById('profile-page-avatar');
-      const usernameEl = document.getElementById('profile-page-username');
-      const emailEl = document.getElementById('profile-page-email');
       const displayNameEl = document.getElementById('profile-page-display-name');
       const bioEl = document.getElementById('profile-page-bio');
       const fileInput = document.getElementById('profile-page-file-input');
       const saveBtn = document.getElementById('btn-save-profile-page');
-
+      const status = document.getElementById('profile-save-status');
       let currentAvatarUrl = user.avatar_url;
-
-      avatarEl.src = API.resolveUrl(user.avatar_url) || `https://api.dicebear.com/7.x/initials/svg?seed=${user.username}`;
-      usernameEl.value = '@' + user.username;
-      emailEl.value = user.email || '';
+      avatarEl.src = API.resolveUrl(user.avatar_url) || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user.username)}`;
+      document.getElementById('profile-page-username').value = '@' + user.username;
+      document.getElementById('profile-page-email').value = user.email || '';
+      document.getElementById('profile-summary-name').textContent = user.display_name || user.username;
+      document.getElementById('profile-summary-username').textContent = '@' + user.username;
       displayNameEl.value = user.display_name || '';
       bioEl.value = user.bio || '';
-
+      displayNameEl.addEventListener('input', () => { document.getElementById('profile-summary-name').textContent = displayNameEl.value.trim() || user.username; });
       fileInput.addEventListener('change', async (e) => {
-        if (e.target.files && e.target.files[0]) {
-          try {
-            const url = await ProfileManager.uploadAvatar(e.target.files[0]);
-            currentAvatarUrl = url;
-            avatarEl.src = API.resolveUrl(url);
-            Utils.showToast('Avatar uploaded! Click Save to apply.', 'info');
-          } catch (err) {}
-        }
-      });
-
-      saveBtn.addEventListener('click', async () => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        if (!file.type.startsWith('image/')) { Utils.showToast('Please choose an image for your profile photo.', 'error'); fileInput.value = ''; return; }
         saveBtn.disabled = true;
+        fileInput.disabled = true;
+        document.getElementById('avatar-upload-label').textContent = 'Uploading…';
+        status.textContent = 'Uploading your photo…';
         try {
-          await ProfileManager.updateProfile(
-            displayNameEl.value.trim(),
-            bioEl.value.trim(),
-            currentAvatarUrl
-          );
-          setTimeout(() => window.location.href = 'chat.html', 700);
-        } catch (err) {
-          saveBtn.disabled = false;
-        }
+          currentAvatarUrl = await ProfileManager.uploadAvatar(file);
+          avatarEl.src = API.resolveUrl(currentAvatarUrl);
+          status.textContent = 'Photo uploaded. Save your changes to apply it.';
+        } catch (err) { status.textContent = 'Your photo could not be uploaded. Please try again.'; }
+        finally { saveBtn.disabled = false; fileInput.disabled = false; fileInput.value = ''; document.getElementById('avatar-upload-label').textContent = 'Change photo'; }
       });
-    }
+      document.getElementById('profile-page-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        saveBtn.disabled = true;
+        fileInput.disabled = true;
+        saveBtn.textContent = 'Saving…';
+        status.textContent = 'Saving your profile…';
+        try {
+          await ProfileManager.updateProfile(displayNameEl.value.trim(), bioEl.value.trim(), currentAvatarUrl);
+          status.textContent = 'Your profile has been saved.';
+          setTimeout(() => window.location.href = 'chat.html', 700);
+        } catch (err) { status.textContent = 'Changes could not be saved. Please try again.'; saveBtn.disabled = false; fileInput.disabled = false; saveBtn.textContent = 'Save changes'; }
+      });
+    })();
   </script>
 </body>
 </html>

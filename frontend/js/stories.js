@@ -261,9 +261,20 @@ const Stories = {
 
   closeViewer() {
     this.stopStoryTimer();
+    this.stopCurrentMedia();
     this.elements.viewerOverlay.classList.remove('active');
     this.closeViewersDrawer();
     this.loadStories(); // Refresh seen rings
+  },
+
+  stopCurrentMedia() {
+    if (!this.elements.mediaStage) return;
+    this.elements.mediaStage.querySelectorAll('video').forEach(video => {
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+    });
+    this.elements.mediaStage.replaceChildren();
   },
 
   renderCurrentStory() {
@@ -288,7 +299,7 @@ const Stories = {
     this.renderProgressBars(group.stories.length, this.currentStoryIndex);
 
     // Media Stage
-    this.elements.mediaStage.innerHTML = '';
+    this.stopCurrentMedia();
     const mediaUrl = API.resolveUrl(story.media_url);
 
     if (story.media_type === 'VIDEO') {

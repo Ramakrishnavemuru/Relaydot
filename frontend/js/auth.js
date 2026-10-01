@@ -91,7 +91,7 @@ const Auth = {
 
   // 4. Passkey Login (WebAuthn / Biometrics)
   loginWithPasskey: async (identifier = null) => {
-    if (!window.Passkeys) {
+    if (typeof Passkeys === 'undefined') {
       throw new Error('Passkeys module not loaded.');
     }
     const data = await Passkeys.login(identifier);
@@ -122,7 +122,7 @@ const Auth = {
       API.removeToken();
       API.removeRefreshToken();
       localStorage.removeItem(CONFIG.USER_KEY);
-      if (window.WSClient) {
+      if (typeof WSClient !== 'undefined') {
         WSClient.disconnect();
       }
       window.location.href = 'login.html';
@@ -157,7 +157,7 @@ const Auth = {
 
   // 9. Passkey Management
   registerPasskey: async (name = 'My Device Passkey') => {
-    if (!window.Passkeys) {
+    if (typeof Passkeys === 'undefined') {
       throw new Error('Passkeys module not loaded.');
     }
     return await Passkeys.register(name);

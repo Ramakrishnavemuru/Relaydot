@@ -251,8 +251,8 @@ const Calls = {
         target_user_id: this.activeCall.peerId,
         reason: 'declined'
       });
-      this.activeCall = null;
     }
+    this.endCall(false);
   },
 
   // Caller receives call_accept: Create Offer
@@ -321,6 +321,7 @@ const Calls = {
     if (this.elements.remoteVideo) this.elements.remoteVideo.srcObject = null;
     if (this.elements.localVideo) this.elements.localVideo.srcObject = null;
     if (this.elements.callModal) this.elements.callModal.classList.remove('active');
+    if (this.elements.incomingOverlay) this.elements.incomingOverlay.classList.remove('active');
 
     this.activeCall = null;
     this.isAudioMuted = false;
