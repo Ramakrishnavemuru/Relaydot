@@ -3,9 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
   <title>Relay — Messages</title>
+
   <script src="js/icons.js"></script>
   <script src="js/ui.js"></script>
+
   <link rel="stylesheet" href="css/global.css">
   <link rel="stylesheet" href="css/chat.css">
   <link rel="stylesheet" href="css/profile.css">
@@ -18,73 +21,168 @@
 
   <div class="chat-app-container">
 
+    <!-- ==========================================================
+         MAIN NAVIGATION
+         ========================================================== -->
+
     <nav class="app-rail" aria-label="Main navigation">
-      <a href="chat.html" class="brand-mark" title="Relay home" aria-label="Relay home">
+
+      <a
+        href="chat.html"
+        class="brand-mark"
+        title="Relay home"
+        aria-label="Relay home"
+      >
         <span data-icon="messages"></span>
       </a>
 
       <div class="rail-links">
-        <button class="rail-button active" id="nav-messages" title="Messages" aria-label="Messages" aria-current="page">
+
+        <button
+          class="rail-button active"
+          id="nav-messages"
+          title="Messages"
+          aria-label="Messages"
+          aria-current="page"
+        >
           <span data-icon="message"></span>
           <span>Chats</span>
         </button>
 
-        <button class="rail-button" id="nav-stories" title="Stories" aria-label="Stories">
+        <button
+          class="rail-button"
+          id="nav-stories"
+          title="Stories"
+          aria-label="Stories"
+        >
           <span data-icon="circle"></span>
           <span>Stories</span>
         </button>
 
-        <button class="rail-button" id="btn-new-group" title="New group" aria-label="New group">
+        <button
+          class="rail-button"
+          id="btn-new-group"
+          title="New group"
+          aria-label="New group"
+        >
           <span data-icon="users"></span>
           <span>Groups</span>
         </button>
+
       </div>
 
       <div class="rail-bottom">
-        <button class="icon-btn" data-theme-toggle title="Toggle light or dark theme">
+
+        <button
+          class="icon-btn"
+          data-theme-toggle
+          title="Toggle light or dark theme"
+        >
           <span data-icon="sun"></span>
         </button>
 
-        <button id="btn-settings" class="icon-btn" title="Settings">
+        <button
+          id="btn-settings"
+          class="icon-btn"
+          title="Settings"
+        >
           <span data-icon="settings"></span>
         </button>
 
-        <button id="btn-logout" class="icon-btn" title="Sign out">
+        <button
+          id="btn-logout"
+          class="icon-btn"
+          title="Sign out"
+        >
           <span data-icon="logout"></span>
         </button>
 
-        <a href="profile.html" id="btn-header-profile" class="rail-profile" title="Your profile" aria-label="Your profile">
-          <img id="my-avatar" src="" alt="Your profile" class="avatar-img">
-          <span id="my-status-dot" class="online-dot online"></span>
+        <a
+          href="profile.html"
+          id="btn-header-profile"
+          class="rail-profile"
+          title="Your profile"
+          aria-label="Your profile"
+        >
+          <img
+            id="my-avatar"
+            src=""
+            alt="Your profile"
+            class="avatar-img"
+          />
+
+          <span
+            id="my-status-dot"
+            class="online-dot online"
+          ></span>
         </a>
+
       </div>
+
     </nav>
 
 
-    <aside class="chat-sidebar" aria-label="Conversations">
+    <!-- ==========================================================
+         CHAT SIDEBAR
+         ========================================================== -->
+
+    <aside
+      class="chat-sidebar"
+      aria-label="Conversations"
+    >
 
       <div class="sidebar-brand">
-        <span>relay<span class="brand-period">.</span></span>
-        <span class="workspace-label">YOUR SPACE TO CONNECT</span>
+        <span>
+          relay<span class="brand-period">.</span>
+        </span>
+
+        <span class="workspace-label">
+          YOUR SPACE TO CONNECT
+        </span>
       </div>
+
 
       <div class="sidebar-header">
+
         <div>
+
           <h1>
             Messages
-            <span id="conversation-count" class="count-label">0</span>
+            <span
+              id="conversation-count"
+              class="count-label"
+            >
+              0
+            </span>
           </h1>
-          <p>Good conversations start here.</p>
+
+          <p>
+            Good conversations start here.
+          </p>
+
         </div>
 
-        <button id="btn-new-chat" class="icon-btn compose-button" title="New conversation">
+        <button
+          id="btn-new-chat"
+          class="icon-btn compose-button"
+          title="New conversation"
+        >
           <span data-icon="compose"></span>
         </button>
+
       </div>
 
+
+      <!-- Search -->
+
       <div class="sidebar-search">
+
         <div class="search-input-wrap">
-          <span class="search-icon" data-icon="search"></span>
+
+          <span
+            class="search-icon"
+            data-icon="search"
+          ></span>
 
           <input
             type="search"
@@ -95,10 +193,19 @@
           />
 
           <kbd>⌘ K</kbd>
+
         </div>
+
       </div>
 
-      <nav class="chat-filters" aria-label="Filter conversations">
+
+      <!-- Filters -->
+
+      <nav
+        class="chat-filters"
+        aria-label="Filter conversations"
+      >
+
         <button
           class="chat-filter active"
           data-filter="all"
@@ -123,13 +230,19 @@
         >
           Groups
         </button>
+
       </nav>
 
 
-      <!-- 24-Hour Stories Carousel Tray -->
-      <div id="stories-tray-container" class="stories-tray-container hidden">
+      <!-- Stories -->
+
+      <div
+        id="stories-tray-container"
+        class="stories-tray-container hidden"
+      >
 
         <div class="stories-tray-title">
+
           <span>Stories</span>
 
           <button
@@ -139,51 +252,84 @@
           >
             + Add Story
           </button>
+
         </div>
 
-        <div id="stories-carousel" class="stories-carousel">
+        <div
+          id="stories-carousel"
+          class="stories-carousel"
+        >
           <!-- Rendered dynamically -->
         </div>
 
       </div>
 
 
-      <!-- Conversations List -->
-      <div id="conversations-list" class="conversations-list">
+      <!-- Conversations -->
+
+      <div
+        id="conversations-list"
+        class="conversations-list"
+      >
         <!-- Rendered dynamically -->
       </div>
 
 
+      <!-- Sidebar footer -->
+
       <div class="sidebar-footer">
+
         <span class="connection-dot"></span>
 
-        <span id="connection-label" role="status">
+        <span
+          id="connection-label"
+          role="status"
+        >
           Connecting…
         </span>
 
-        <span id="my-name" class="truncate">
+        <span
+          id="my-name"
+          class="truncate"
+        >
           Your workspace
         </span>
+
       </div>
 
     </aside>
 
 
-    <!-- Main Chat Window Area -->
+    <!-- ==========================================================
+         MAIN CHAT WINDOW
+         ========================================================== -->
+
     <main class="chat-window">
 
+      <!-- Empty state -->
 
-      <!-- Empty Chat State -->
-      <div id="empty-chat-state" class="empty-chat-state">
+      <div
+        id="empty-chat-state"
+        class="empty-chat-state"
+      >
 
         <div class="empty-topline">
-          <span>Your everyday conversations, beautifully connected.</span>
+
+          <span>
+            Your everyday conversations, beautifully connected.
+          </span>
+
           <span data-icon="messages"></span>
+
         </div>
+
 
         <div class="empty-content">
 
-          <div class="empty-illustration" aria-hidden="true">
+          <div
+            class="empty-illustration"
+            aria-hidden="true"
+          >
 
             <div class="orbit orbit-one"></div>
             <div class="orbit orbit-two"></div>
@@ -203,6 +349,7 @@
 
           </div>
 
+
           <span class="eyebrow">
             A LITTLE CLOSER, EVERY DAY
           </span>
@@ -217,7 +364,10 @@
             Pick a chat or start something new.
           </p>
 
-          <button id="btn-empty-new-chat" class="btn btn-primary">
+          <button
+            id="btn-empty-new-chat"
+            class="btn btn-primary"
+          >
             <span data-icon="plus"></span>
             Start a conversation
           </button>
@@ -229,19 +379,29 @@
 
         </div>
 
+
         <div class="empty-bottomline">
+
           <span data-icon="message"></span>
+
           A calmer place to keep in touch.
+
         </div>
 
       </div>
 
 
-      <!-- Active Chat Window -->
-      <div id="active-chat-window" class="active-chat-window hidden">
+      <!-- ========================================================
+           ACTIVE CHAT
+           ======================================================== -->
 
+      <div
+        id="active-chat-window"
+        class="active-chat-window hidden"
+      >
 
-        <!-- Chat Header -->
+        <!-- Chat header -->
+
         <header class="chat-header">
 
           <div class="chat-header-info">
@@ -254,12 +414,14 @@
               <span data-icon="arrow-left"></span>
             </button>
 
+
             <img
               id="chat-avatar"
               src=""
               alt="Avatar"
               class="chat-header-avatar"
-            >
+            />
+
 
             <button
               class="chat-header-meta"
@@ -267,14 +429,25 @@
               title="Conversation details"
             >
 
-              <span id="chat-title" class="chat-title">
+              <span
+                id="chat-title"
+                class="chat-title"
+              >
                 Conversation Name
               </span>
 
-              <span id="chat-header-status" class="status-text">
-                <span id="chat-subtitle" class="chat-subtitle">
+              <span
+                id="chat-header-status"
+                class="status-text"
+              >
+
+                <span
+                  id="chat-subtitle"
+                  class="chat-subtitle"
+                >
                   Offline
                 </span>
+
               </span>
 
             </button>
@@ -284,7 +457,8 @@
 
           <div class="chat-header-actions">
 
-            <!-- Voice and Video Call Triggers -->
+            <!-- Voice Call -->
+
             <button
               id="btn-voice-call"
               class="icon-btn hidden"
@@ -292,6 +466,9 @@
             >
               <span data-icon="phone"></span>
             </button>
+
+
+            <!-- Video Call -->
 
             <button
               id="btn-video-call"
@@ -301,6 +478,7 @@
               <span data-icon="video"></span>
             </button>
 
+
             <button
               id="btn-details"
               class="icon-btn"
@@ -308,6 +486,7 @@
             >
               <span data-icon="info"></span>
             </button>
+
 
             <button
               id="btn-search-messages"
@@ -322,20 +501,33 @@
         </header>
 
 
+        <!-- Connection banner -->
+
         <div
           id="connection-banner"
           class="connection-banner hidden"
           role="status"
         >
-          Connection interrupted. Reconnecting…
-          <button id="btn-reconnect" class="text-button">
+
+          Connection interrupted.
+          Reconnecting…
+
+          <button
+            id="btn-reconnect"
+            class="text-button"
+          >
             Retry now
           </button>
+
         </div>
 
 
-        <!-- Message History Feed -->
-        <div id="messages-container" class="messages-container">
+        <!-- Messages -->
+
+        <div
+          id="messages-container"
+          class="messages-container"
+        >
 
           <button
             id="btn-load-earlier"
@@ -354,16 +546,19 @@
         </div>
 
 
-        <!-- Typing Indicator -->
+        <!-- Typing -->
+
         <div
           id="typing-indicator"
           class="typing-indicator-bar hidden"
         >
 
           <div class="typing-dots">
+
             <span class="typing-dot"></span>
             <span class="typing-dot"></span>
             <span class="typing-dot"></span>
+
           </div>
 
           <span id="typing-text">
@@ -373,11 +568,14 @@
         </div>
 
 
-        <!-- Chat Input -->
+        <!-- ======================================================
+             CHAT INPUT
+             ====================================================== -->
+
         <footer class="chat-input-wrapper">
 
+          <!-- Reply preview -->
 
-          <!-- Reply Preview -->
           <div
             id="reply-preview-bar"
             class="preview-banner hidden"
@@ -387,7 +585,9 @@
 
               <span class="banner-author">
                 Replying to
-                <span id="reply-author">User</span>
+                <span id="reply-author">
+                  User
+                </span>
               </span>
 
               <span
@@ -410,7 +610,8 @@
           </div>
 
 
-          <!-- Edit Preview -->
+          <!-- Edit preview -->
+
           <div
             id="edit-preview-bar"
             class="preview-banner hidden"
@@ -442,7 +643,8 @@
           </div>
 
 
-          <!-- Attachment Preview -->
+          <!-- Attachment preview -->
+
           <div
             id="attachment-preview-bar"
             class="attachment-preview-chips hidden"
@@ -450,13 +652,14 @@
 
             <div
               id="attachment-previews"
-              style="display:flex; gap:0.5rem; flex-wrap:wrap;"
+              style="display: flex; gap: 0.5rem; flex-wrap: wrap;"
             ></div>
 
           </div>
 
 
-          <!-- Input Controls -->
+          <!-- Input controls -->
+
           <div class="chat-input-controls">
 
             <input
@@ -464,7 +667,8 @@
               id="file-input"
               class="hidden"
               accept="image/*,.pdf,.doc,.docx,.txt,.zip"
-            >
+            />
+
 
             <button
               id="btn-attachment"
@@ -475,7 +679,8 @@
             </button>
 
 
-            <!-- Emoji Picker -->
+            <!-- Emoji -->
+
             <button
               id="btn-emoji"
               class="icon-btn"
@@ -484,10 +689,12 @@
               <span data-icon="smile"></span>
             </button>
 
+
             <div
               id="emoji-picker-popup"
               class="emoji-picker-container hidden"
             >
+
               <button class="emoji-btn">👍</button>
               <button class="emoji-btn">❤️</button>
               <button class="emoji-btn">😂</button>
@@ -500,10 +707,12 @@
               <button class="emoji-btn">🚀</button>
               <button class="emoji-btn">✨</button>
               <button class="emoji-btn">💯</button>
+
             </div>
 
 
-            <!-- Message Textarea -->
+            <!-- Message -->
+
             <textarea
               id="message-input"
               class="message-textarea"
@@ -513,7 +722,8 @@
             ></textarea>
 
 
-            <!-- Send Button -->
+            <!-- Send -->
+
             <button
               id="btn-send-message"
               class="btn-send"
@@ -526,10 +736,13 @@
 
 
           <div class="composer-caption">
+
             A little thought goes a long way.
+
             <span>
               Enter to send · Shift + Enter for a new line
             </span>
+
           </div>
 
         </footer>
@@ -541,9 +754,9 @@
   </div>
 
 
-  <!-- ========================================================= -->
-  <!-- CALL OVERLAY: Incoming Call Banner -->
-  <!-- ========================================================= -->
+  <!-- ==========================================================
+       INCOMING CALL OVERLAY
+       ========================================================== -->
 
   <div
     id="incoming-call-overlay"
@@ -559,7 +772,7 @@
         src=""
         alt="Caller"
         class="incoming-caller-avatar"
-      >
+      />
 
     </div>
 
@@ -593,6 +806,7 @@
         <span data-icon="phone"></span>
       </button>
 
+
       <button
         id="btn-decline-call"
         class="btn-call-decline"
@@ -606,9 +820,9 @@
   </div>
 
 
-  <!-- ========================================================= -->
-  <!-- CALL MODAL: Active Voice / Video Call -->
-  <!-- ========================================================= -->
+  <!-- ==========================================================
+       ACTIVE CALL MODAL
+       ========================================================== -->
 
   <div
     id="call-modal-overlay"
@@ -617,8 +831,8 @@
 
     <div class="call-modal-container">
 
+      <!-- Call header -->
 
-      <!-- Call Header -->
       <div class="call-header-info">
 
         <h3
@@ -638,25 +852,27 @@
       </div>
 
 
-      <!-- ===================================================== -->
-      <!-- Call Media Stage -->
-      <!-- ===================================================== -->
+      <!-- ========================================================
+           CALL MEDIA STAGE
+           ======================================================== -->
 
       <div class="call-media-stage">
 
-
-        <!-- ================= VIDEO MODE ================= -->
+        <!-- ======================================================
+             VIDEO CALL
+             ====================================================== -->
 
         <div
           id="video-call-stage"
           style="
-            width:100%;
-            height:100%;
-            position:relative;
+            width: 100%;
+            height: 100%;
+            position: relative;
           "
         >
 
           <!-- Remote video -->
+
           <video
             id="remote-video-el"
             class="remote-video"
@@ -666,6 +882,7 @@
 
 
           <!-- Local video -->
+
           <video
             id="local-video-el"
             class="local-video-pip"
@@ -677,7 +894,28 @@
         </div>
 
 
-        <!-- ================= VOICE MODE ================= -->
+        <!-- ======================================================
+             REMOTE AUDIO
+
+             IMPORTANT:
+             This was missing from the previous HTML.
+
+             calls.js attaches the remote MediaStream
+             to this element.
+
+             DO NOT add "muted".
+             ====================================================== -->
+
+        <audio
+          id="remote-audio-el"
+          autoplay
+          playsinline
+        ></audio>
+
+
+        <!-- ======================================================
+             VOICE CALL
+             ====================================================== -->
 
         <div
           id="voice-call-stage"
@@ -688,41 +926,21 @@
             id="voice-call-avatar"
             src=""
             class="voice-avatar-circle"
-            alt="Call participant"
-          >
-
-
-          <!--
-            IMPORTANT:
-            Dedicated remote audio element for voice calls.
-
-            The calls.js file must attach the WebRTC remoteStream
-            to this element:
-
-              remoteAudio.srcObject = remoteStream;
-
-            and call:
-
-              remoteAudio.play();
-
-            This element is intentionally visually hidden by default.
-          -->
-          <audio
-            id="remote-audio-el"
-            autoplay
-            playsinline
-          ></audio>
+            alt="Caller"
+          />
 
         </div>
 
       </div>
 
 
-      <!-- ===================================================== -->
-      <!-- Call Controls -->
-      <!-- ===================================================== -->
+      <!-- ========================================================
+           CALL CONTROLS
+           ======================================================== -->
 
       <div class="call-controls-bar">
+
+        <!-- Microphone -->
 
         <button
           id="btn-call-mute-mic"
@@ -733,6 +951,8 @@
         </button>
 
 
+        <!-- Camera -->
+
         <button
           id="btn-call-toggle-cam"
           class="call-control-btn"
@@ -742,6 +962,8 @@
         </button>
 
 
+        <!-- Switch camera -->
+
         <button
           id="btn-call-switch-cam"
           class="call-control-btn"
@@ -750,6 +972,8 @@
           <span data-icon="refresh"></span>
         </button>
 
+
+        <!-- End -->
 
         <button
           id="btn-call-end"
@@ -766,9 +990,9 @@
   </div>
 
 
-  <!-- ========================================================= -->
-  <!-- STORIES MODAL: Fullscreen Story Viewer -->
-  <!-- ========================================================= -->
+  <!-- ==========================================================
+       STORIES MODAL
+       ========================================================== -->
 
   <div
     id="story-viewer-overlay"
@@ -777,15 +1001,12 @@
 
     <div class="story-viewer-card">
 
-
-      <!-- Segmented Progress Bar -->
       <div
         id="story-progress-container"
         class="story-progress-container"
       ></div>
 
 
-      <!-- Story Header -->
       <div class="story-viewer-header">
 
         <div class="story-author-info">
@@ -794,8 +1015,8 @@
             id="story-author-avatar"
             src=""
             class="story-author-avatar"
-            alt="Story author"
-          >
+            alt=""
+          />
 
           <span
             id="story-author-name"
@@ -824,6 +1045,7 @@
             <span data-icon="trash"></span>
           </button>
 
+
           <button
             id="btn-close-story-viewer"
             class="story-icon-btn"
@@ -837,7 +1059,6 @@
       </div>
 
 
-      <!-- Story Media -->
       <div
         id="story-media-stage"
         class="story-media-stage"
@@ -856,20 +1077,19 @@
       </div>
 
 
-      <!-- Story Caption -->
       <div
         id="story-caption-overlay"
         class="story-caption-overlay hidden"
       ></div>
 
 
-      <!-- Story Footer -->
       <div class="story-viewer-footer">
 
         <button
           id="story-views-pill"
           class="story-views-pill hidden"
         >
+
           <span>
             <span data-icon="eye"></span>
           </span>
@@ -877,6 +1097,7 @@
           <span id="story-views-count-text">
             0 views
           </span>
+
         </button>
 
 
@@ -891,7 +1112,7 @@
             class="story-reply-input"
             placeholder="Reply to story..."
             autocomplete="off"
-          >
+          />
 
           <button
             type="submit"
@@ -905,7 +1126,6 @@
       </div>
 
 
-      <!-- Viewers Drawer -->
       <div
         id="story-viewers-drawer"
         class="story-viewers-drawer"
@@ -913,7 +1133,9 @@
 
         <div class="drawer-header">
 
-          <span>Story Viewers</span>
+          <span>
+            Story Viewers
+          </span>
 
           <button
             id="btn-close-viewers-drawer"
@@ -934,9 +1156,9 @@
   </div>
 
 
-  <!-- ========================================================= -->
-  <!-- STORIES MODAL: Create New Story -->
-  <!-- ========================================================= -->
+  <!-- ==========================================================
+       CREATE STORY MODAL
+       ========================================================== -->
 
   <div
     id="modal-create-story"
@@ -963,7 +1185,8 @@
         <div class="form-group">
 
           <label class="form-label">
-            Select Photo or Video (Expires in 24 hours)
+            Select Photo or Video
+            (Expires in 24 hours)
           </label>
 
           <input
@@ -972,14 +1195,14 @@
             class="form-input"
             accept="image/*,video/*"
             required
-          >
+          />
 
         </div>
 
 
         <div
           id="story-create-preview-wrap"
-          style="text-align:center;margin-bottom:1rem;"
+          style="text-align: center; margin-bottom: 1rem;"
         >
 
           <img
@@ -987,13 +1210,14 @@
             src=""
             class="hidden"
             style="
-              max-width:100%;
-              max-height:220px;
-              border-radius:var(--radius-md);
-              object-fit:contain;
+              max-width: 100%;
+              max-height: 220px;
+              border-radius: var(--radius-md);
+              object-fit: contain;
             "
-            alt="Story image preview"
-          >
+            alt=""
+          />
+
 
           <video
             id="story-create-preview-video"
@@ -1001,9 +1225,9 @@
             class="hidden"
             controls
             style="
-              max-width:100%;
-              max-height:220px;
-              border-radius:var(--radius-md);
+              max-width: 100%;
+              max-height: 220px;
+              border-radius: var(--radius-md);
             "
           ></video>
 
@@ -1049,9 +1273,9 @@
   </div>
 
 
-  <!-- ========================================================= -->
-  <!-- MODAL: New Direct Chat -->
-  <!-- ========================================================= -->
+  <!-- ==========================================================
+       NEW DIRECT CHAT
+       ========================================================== -->
 
   <div
     id="modal-new-chat"
@@ -1077,7 +1301,7 @@
 
         <div
           class="search-input-wrap"
-          style="margin-bottom:1rem;"
+          style="margin-bottom: 1rem;"
         >
 
           <span class="search-icon">
@@ -1089,7 +1313,7 @@
             id="search-users-input"
             class="form-input"
             placeholder="Search by username or email..."
-          >
+          />
 
         </div>
 
@@ -1097,7 +1321,7 @@
         <div
           id="user-search-results"
           class="user-search-results"
-          style="max-height:320px;overflow-y:auto;"
+          style="max-height: 320px; overflow-y: auto;"
         >
 
           <div class="empty-list-notice">
@@ -1113,9 +1337,9 @@
   </div>
 
 
-  <!-- ========================================================= -->
-  <!-- MODAL: New Group -->
-  <!-- ========================================================= -->
+  <!-- ==========================================================
+       NEW GROUP
+       ========================================================== -->
 
   <div
     id="modal-new-group"
@@ -1151,7 +1375,7 @@
             class="form-input"
             placeholder="e.g. CSE 2027"
             required
-          >
+          />
 
         </div>
 
@@ -1167,7 +1391,7 @@
             id="new-group-desc"
             class="form-input"
             placeholder="e.g. Batch Study & Project Group"
-          >
+          />
 
         </div>
 
@@ -1212,9 +1436,9 @@
   </div>
 
 
-  <!-- ========================================================= -->
-  <!-- MODAL: Search Messages -->
-  <!-- ========================================================= -->
+  <!-- ==========================================================
+       SEARCH MESSAGES
+       ========================================================== -->
 
   <div
     id="modal-search-messages"
@@ -1240,7 +1464,7 @@
 
         <div
           class="search-input-wrap"
-          style="margin-bottom:1rem;"
+          style="margin-bottom: 1rem;"
         >
 
           <span class="search-icon">
@@ -1252,14 +1476,14 @@
             id="search-query-input"
             class="form-input"
             placeholder="Search keywords in all chats..."
-          >
+          />
 
         </div>
 
 
         <div
           id="search-messages-results"
-          style="max-height:320px;overflow-y:auto;"
+          style="max-height: 320px; overflow-y: auto;"
         >
 
           <div class="empty-list-notice">
@@ -1275,9 +1499,9 @@
   </div>
 
 
-  <!-- ========================================================= -->
-  <!-- MODAL: Group / Conversation Info -->
-  <!-- ========================================================= -->
+  <!-- ==========================================================
+       GROUP / CONVERSATION INFO
+       ========================================================== -->
 
   <div
     id="modal-group-info"
@@ -1301,30 +1525,34 @@
 
       <div
         class="modal-body"
-        style="text-align:center;"
+        style="text-align: center;"
       >
 
         <img
           id="group-info-avatar"
           src=""
           class="avatar-preview-img"
-          style="margin:0 auto 0.75rem auto;"
-          alt="Conversation avatar"
-        >
+          style="margin: 0 auto 0.75rem auto;"
+          alt=""
+        />
 
         <h4
           id="group-info-name"
-          style="font-size:1.15rem;font-weight:600;"
+          style="
+            font-size: 1.15rem;
+            font-weight: 600;
+          "
         >
           Name
         </h4>
 
+
         <p
           id="group-info-desc"
           style="
-            color:var(--text-secondary);
-            font-size:0.85rem;
-            margin-bottom:1.5rem;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            margin-bottom: 1.5rem;
           "
         >
           Description
@@ -1352,15 +1580,15 @@
         <div
           id="group-members-section"
           class="hidden"
-          style="text-align:left;"
+          style="text-align: left;"
         >
 
           <h5
             style="
-              font-size:0.9rem;
-              font-weight:600;
-              margin-bottom:0.5rem;
-              color:var(--text-secondary);
+              font-size: 0.9rem;
+              font-weight: 600;
+              margin-bottom: 0.5rem;
+              color: var(--text-secondary);
             "
           >
             Group Members
@@ -1378,7 +1606,7 @@
 
       <div
         class="modal-footer"
-        style="justify-content:space-between;"
+        style="justify-content: space-between;"
       >
 
         <button
@@ -1408,9 +1636,9 @@
   </div>
 
 
-  <!-- ========================================================= -->
-  <!-- MODAL: Settings -->
-  <!-- ========================================================= -->
+  <!-- ==========================================================
+       SETTINGS
+       ========================================================== -->
 
   <div
     id="modal-settings"
@@ -1419,7 +1647,7 @@
 
     <div
       class="modal-card"
-      style="max-width:620px;"
+      style="max-width: 620px;"
     >
 
       <div class="modal-header">
@@ -1439,8 +1667,8 @@
 
         <div class="settings-layout">
 
+          <!-- Settings navigation -->
 
-          <!-- Settings Navigation -->
           <nav class="settings-nav">
 
             <button
@@ -1486,11 +1714,12 @@
           </nav>
 
 
-          <!-- Settings Content -->
+          <!-- Settings content -->
+
           <div class="settings-content">
 
-
             <!-- Appearance -->
+
             <div
               id="pane-appearance"
               class="settings-pane"
@@ -1527,6 +1756,7 @@
 
 
             <!-- Profile -->
+
             <div
               id="pane-profile"
               class="settings-pane active"
@@ -1538,15 +1768,16 @@
                   id="settings-avatar-preview"
                   src=""
                   class="avatar-preview-img"
-                  alt="Profile preview"
-                >
+                  alt=""
+                />
 
                 <div>
 
                   <label
                     class="btn btn-sm btn-secondary"
-                    style="cursor:pointer;"
+                    style="cursor: pointer;"
                   >
+
                     Change Photo
 
                     <input
@@ -1554,14 +1785,15 @@
                       id="settings-avatar-input"
                       class="hidden"
                       accept="image/*"
-                    >
+                    />
+
                   </label>
 
                   <p
                     style="
-                      font-size:0.75rem;
-                      color:var(--text-muted);
-                      margin-top:0.35rem;
+                      font-size: 0.75rem;
+                      color: var(--text-muted);
+                      margin-top: 0.35rem;
                     "
                   >
                     JPG, PNG, or GIF
@@ -1582,7 +1814,7 @@
                   type="text"
                   id="settings-display-name"
                   class="form-input"
-                >
+                />
 
               </div>
 
@@ -1613,6 +1845,7 @@
 
 
             <!-- Privacy -->
+
             <div
               id="pane-privacy"
               class="settings-pane"
@@ -1637,7 +1870,7 @@
                   <input
                     type="checkbox"
                     id="settings-show-last-seen"
-                  >
+                  />
 
                   <span class="slider"></span>
 
@@ -1665,7 +1898,7 @@
                   <input
                     type="checkbox"
                     id="settings-show-online"
-                  >
+                  />
 
                   <span class="slider"></span>
 
@@ -1693,7 +1926,7 @@
                   <input
                     type="checkbox"
                     id="settings-show-read"
-                  >
+                  />
 
                   <span class="slider"></span>
 
@@ -1705,7 +1938,7 @@
               <button
                 id="btn-save-privacy"
                 class="btn btn-primary btn-sm"
-                style="margin-top:1rem;"
+                style="margin-top: 1rem;"
               >
                 Save Privacy
               </button>
@@ -1714,6 +1947,7 @@
 
 
             <!-- Notifications -->
+
             <div
               id="pane-notifications"
               class="settings-pane"
@@ -1738,7 +1972,7 @@
                   <input
                     type="checkbox"
                     id="settings-sound-enabled"
-                  >
+                  />
 
                   <span class="slider"></span>
 
@@ -1766,7 +2000,7 @@
                   <input
                     type="checkbox"
                     id="settings-desktop-enabled"
-                  >
+                  />
 
                   <span class="slider"></span>
 
@@ -1778,7 +2012,7 @@
               <button
                 id="btn-save-notifications"
                 class="btn btn-primary btn-sm"
-                style="margin-top:1rem;"
+                style="margin-top: 1rem;"
               >
                 Save Preferences
               </button>
@@ -1787,13 +2021,14 @@
 
 
             <!-- Security -->
+
             <div
               id="pane-security"
               class="settings-pane"
             >
 
+              <!-- Active sessions -->
 
-              <!-- Active Sessions -->
               <div class="security-card">
 
                 <div class="security-card-header">
@@ -1806,7 +2041,7 @@
                     type="button"
                     id="btn-terminate-other-sessions"
                     class="btn btn-sm btn-secondary"
-                    style="font-size:0.75rem;"
+                    style="font-size: 0.75rem;"
                   >
                     Terminate Others
                   </button>
@@ -1816,9 +2051,9 @@
 
                 <p
                   style="
-                    font-size:0.8125rem;
-                    color:var(--text-secondary);
-                    margin-bottom:0.75rem;
+                    font-size: 0.8125rem;
+                    color: var(--text-secondary);
+                    margin-bottom: 0.75rem;
                   "
                 >
                   Manage devices where your account is currently logged in.
@@ -1829,10 +2064,10 @@
 
                   <div
                     style="
-                      font-size:0.8125rem;
-                      color:var(--text-muted);
-                      text-align:center;
-                      padding:0.5rem;
+                      font-size: 0.8125rem;
+                      color: var(--text-muted);
+                      text-align: center;
+                      padding: 0.5rem;
                     "
                   >
                     Loading active sessions...
@@ -1844,6 +2079,7 @@
 
 
               <!-- 2FA -->
+
               <div class="security-card">
 
                 <div class="security-card-header">
@@ -1865,18 +2101,20 @@
 
                 <p
                   style="
-                    font-size:0.8125rem;
-                    color:var(--text-secondary);
-                    margin-bottom:0.75rem;
+                    font-size: 0.8125rem;
+                    color: var(--text-secondary);
+                    margin-bottom: 0.75rem;
                   "
                 >
-                  Require a verification code from Google Authenticator,
-                  Authy, or recovery code when logging in.
+                  Require a verification code from Google Authenticator, Authy, or recovery code when logging in.
                 </p>
 
 
                 <div
-                  style="display:flex;gap:0.5rem;"
+                  style="
+                    display: flex;
+                    gap: 0.5rem;
+                  "
                 >
 
                   <button
@@ -1891,7 +2129,7 @@
                     type="button"
                     id="btn-disable-2fa"
                     class="btn btn-secondary btn-sm hidden"
-                    style="color:#ef4444;"
+                    style="color: #ef4444;"
                   >
                     Disable 2FA
                   </button>
@@ -1902,6 +2140,7 @@
 
 
               <!-- Passkeys -->
+
               <div class="security-card">
 
                 <div class="security-card-header">
@@ -1915,7 +2154,7 @@
                     type="button"
                     id="btn-open-add-passkey"
                     class="btn btn-sm btn-primary"
-                    style="font-size:0.75rem;"
+                    style="font-size: 0.75rem;"
                   >
                     + Add Passkey
                   </button>
@@ -1925,13 +2164,12 @@
 
                 <p
                   style="
-                    font-size:0.8125rem;
-                    color:var(--text-secondary);
-                    margin-bottom:0.75rem;
+                    font-size: 0.8125rem;
+                    color: var(--text-secondary);
+                    margin-bottom: 0.75rem;
                   "
                 >
-                  Sign in instantly with Face ID, Touch ID,
-                  or Windows Hello. Phishing resistant.
+                  Sign in instantly with Face ID, Touch ID, or Windows Hello. Phishing resistant.
                 </p>
 
 
@@ -1939,10 +2177,10 @@
 
                   <div
                     style="
-                      font-size:0.8125rem;
-                      color:var(--text-muted);
-                      text-align:center;
-                      padding:0.5rem;
+                      font-size: 0.8125rem;
+                      color: var(--text-muted);
+                      text-align: center;
+                      padding: 0.5rem;
                     "
                   >
                     Loading passkeys...
@@ -1953,12 +2191,13 @@
               </div>
 
 
-              <!-- Password Update -->
+              <!-- Password -->
+
               <div class="security-card">
 
                 <span
                   class="security-card-title"
-                  style="margin-bottom:0.75rem;"
+                  style="margin-bottom: 0.75rem;"
                 >
                   <span data-icon="lock"></span>
                   Change Password
@@ -1975,7 +2214,7 @@
                     type="password"
                     id="settings-cur-password"
                     class="form-input"
-                  >
+                  />
 
                 </div>
 
@@ -1990,7 +2229,7 @@
                     type="password"
                     id="settings-new-password"
                     class="form-input"
-                  >
+                  />
 
                 </div>
 
@@ -2005,7 +2244,7 @@
                     type="password"
                     id="settings-conf-password"
                     class="form-input"
-                  >
+                  />
 
                 </div>
 
@@ -2032,9 +2271,9 @@
   </div>
 
 
-  <!-- ========================================================= -->
-  <!-- 2FA Setup Modal -->
-  <!-- ========================================================= -->
+  <!-- ==========================================================
+       2FA SETUP
+       ========================================================== -->
 
   <div
     id="modal-2fa-setup"
@@ -2059,26 +2298,25 @@
 
       <div class="modal-body">
 
-
         <!-- Step 1 -->
+
         <div id="setup-2fa-step-1">
 
           <p
             style="
-              color:var(--text-secondary);
-              font-size:0.875rem;
-              margin-bottom:1rem;
+              color: var(--text-secondary);
+              font-size: 0.875rem;
+              margin-bottom: 1rem;
             "
           >
-            Scan this QR code with Google Authenticator,
-            Authy, or 1Password:
+            Scan this QR code with Google Authenticator, Authy, or 1Password:
           </p>
 
 
           <div
             style="
-              text-align:center;
-              margin:1rem 0;
+              text-align: center;
+              margin: 1rem 0;
             "
           >
 
@@ -2087,32 +2325,34 @@
               src=""
               alt="2FA QR Code"
               style="
-                width:200px;
-                height:200px;
-                border-radius:8px;
-                border:1px solid var(--border-color);
+                width: 200px;
+                height: 200px;
+                border-radius: 8px;
+                border: 1px solid var(--border-color);
               "
-            >
+            />
 
           </div>
 
 
           <div
             style="
-              font-size:0.8125rem;
-              color:var(--text-muted);
-              text-align:center;
-              margin-bottom:1rem;
+              font-size: 0.8125rem;
+              color: var(--text-muted);
+              text-align: center;
+              margin-bottom: 1rem;
             "
           >
 
-            Can't scan? Key:
+            Can't scan?
+
+            Key:
 
             <code
               id="setup-2fa-secret"
               style="
-                font-weight:600;
-                color:var(--primary-color);
+                font-weight: 600;
+                color: var(--primary-color);
               "
             ></code>
 
@@ -2132,11 +2372,11 @@
               placeholder="e.g. 123456"
               maxlength="6"
               style="
-                text-align:center;
-                font-size:1.1rem;
-                letter-spacing:0.2rem;
+                text-align: center;
+                font-size: 1.1rem;
+                letter-spacing: 0.2rem;
               "
-            >
+            />
 
           </div>
 
@@ -2145,7 +2385,7 @@
             type="button"
             id="btn-confirm-enable-2fa"
             class="btn btn-primary"
-            style="width:100%;"
+            style="width: 100%;"
           >
             Verify & Activate 2FA
           </button>
@@ -2154,6 +2394,7 @@
 
 
         <!-- Step 2 -->
+
         <div
           id="setup-2fa-step-2"
           class="hidden"
@@ -2161,18 +2402,18 @@
 
           <div
             style="
-              background:#eff6ff;
-              border:1px solid #bfdbfe;
-              border-radius:8px;
-              padding:0.75rem;
-              margin-bottom:1rem;
+              background: #eff6ff;
+              border: 1px solid #bfdbfe;
+              border-radius: 8px;
+              padding: 0.75rem;
+              margin-bottom: 1rem;
             "
           >
 
             <strong
               style="
-                color:#1e40af;
-                font-size:0.875rem;
+                color: #1e40af;
+                font-size: 0.875rem;
               "
             >
               ⚠️ Save your backup recovery codes!
@@ -2180,14 +2421,12 @@
 
             <p
               style="
-                color:#1e3a8a;
-                font-size:0.8125rem;
-                margin-top:0.25rem;
+                color: #1e3a8a;
+                font-size: 0.8125rem;
+                margin-top: 0.25rem;
               "
             >
-              If you lose access to your authenticator app,
-              these codes are the only way to log in.
-              Each code can only be used once.
+              If you lose access to your authenticator app, these codes are the only way to log in. Each code can only be used once.
             </p>
 
           </div>
@@ -2201,8 +2440,8 @@
 
           <div
             style="
-              display:flex;
-              gap:0.5rem;
+              display: flex;
+              gap: 0.5rem;
             "
           >
 
@@ -2210,7 +2449,7 @@
               type="button"
               id="btn-copy-recovery-codes"
               class="btn btn-secondary"
-              style="flex:1;"
+              style="flex: 1;"
             >
               Copy Codes
             </button>
@@ -2219,7 +2458,7 @@
               type="button"
               id="btn-finish-2fa"
               class="btn btn-primary"
-              style="flex:1;"
+              style="flex: 1;"
             >
               Done
             </button>
@@ -2235,9 +2474,9 @@
   </div>
 
 
-  <!-- ========================================================= -->
-  <!-- Add Passkey Modal -->
-  <!-- ========================================================= -->
+  <!-- ==========================================================
+       ADD PASSKEY
+       ========================================================== -->
 
   <div
     id="modal-add-passkey"
@@ -2249,8 +2488,11 @@
       <div class="modal-header">
 
         <h3 class="modal-title">
+
           <span data-icon="key"></span>
+
           Add a Passkey
+
         </h3>
 
         <button class="icon-btn modal-close">
@@ -2264,14 +2506,12 @@
 
         <p
           style="
-            font-size:0.875rem;
-            color:var(--text-secondary);
-            margin-bottom:1rem;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
           "
         >
-          Register your current device
-          (e.g. MacBook Touch ID, iPhone Face ID,
-          or Windows Hello) as a passkey.
+          Register your current device (e.g. MacBook Touch ID, iPhone Face ID, or Windows Hello) as a passkey.
         </p>
 
 
@@ -2286,7 +2526,7 @@
             id="input-passkey-name"
             class="form-input"
             placeholder="e.g. MacBook Touch ID"
-          >
+          />
 
         </div>
 
@@ -2295,7 +2535,7 @@
           type="button"
           id="btn-create-passkey-submit"
           class="btn btn-primary"
-          style="width:100%;"
+          style="width: 100%;"
         >
           Continue with Biometrics / Key
         </button>
@@ -2307,23 +2547,38 @@
   </div>
 
 
-  <!-- ========================================================= -->
-  <!-- Scripts -->
-  <!-- ========================================================= -->
+  <!-- ==========================================================
+       SCRIPTS
+       ========================================================== -->
 
   <script src="js/config.js"></script>
+
   <script src="js/utils.js"></script>
+
   <script src="js/api.js"></script>
+
   <script src="js/passkeys.js"></script>
+
   <script src="js/auth.js"></script>
+
   <script src="js/websocket.js"></script>
+
   <script src="js/notifications.js"></script>
+
+  <!-- WebRTC MUST load before Calls -->
   <script src="js/webrtc.js"></script>
+
+  <!-- Calls depends on WebRTC -->
   <script src="js/calls.js"></script>
+
   <script src="js/stories.js"></script>
+
   <script src="js/users.js"></script>
+
   <script src="js/groups.js"></script>
+
   <script src="js/profile.js"></script>
+
   <script src="js/chat.js"></script>
 
 </body>
