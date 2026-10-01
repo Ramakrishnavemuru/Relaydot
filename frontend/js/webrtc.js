@@ -1,103 +1,52 @@
-// ============================================================
-// Relay WebRTC Client
+// WebRTC PeerConnection Client
 // Handles:
-// - Camera / microphone acquisition
-// - WebRTC PeerConnection
-// - SDP offer / answer
-// - ICE candidate exchange
-// - Remote audio / video tracks
-// - Camera switching
-// - Microphone / camera toggling
-// - Hardware fallbacks
+// - Camera / microphone
+// - Voice calls
+// - Video calls
+// - ICE candidate queuing
+// - STUN / TURN configuration
 // - Connection diagnostics
-// ============================================================
+// - Hardware fallbacks
 
 class WebRTCClient {
-
   constructor() {
-
-    // ----------------------------------------------------------
-    // Peer connection state
-    // ----------------------------------------------------------
-
     this.peerConnection = null;
-
     this.localStream = null;
-
     this.remoteStream = null;
 
-
-    // ----------------------------------------------------------
-    // ICE servers
-    // ----------------------------------------------------------
+    // Default STUN servers.
     // Backend /calls/config can replace these with STUN + TURN.
-
     this.iceServers = [
-      {
-        urls: 'stun:stun.l.google.com:19302'
-      },
-      {
-        urls: 'stun:stun1.l.google.com:19302'
-      }
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' }
     ];
-
-
-    // ----------------------------------------------------------
-    // ICE candidate queue
-    // ----------------------------------------------------------
-    // Important:
-    // ICE candidates can arrive before:
-    //
-    // 1. PeerConnection exists
-    // 2. Remote description has been set
-    //
-    // We therefore queue them and add them later.
-
-    this.pendingIceCandidates = [];
-
-
-    // ----------------------------------------------------------
-    // Camera state
-    // ----------------------------------------------------------
 
     this.currentFacingMode = 'user';
 
-
-    // ----------------------------------------------------------
-    // Synthetic stream state
-    // ----------------------------------------------------------
-
     this.syntheticAnimationTimer = null;
-
     this.syntheticAudioContext = null;
 
     this.isSynthetic = false;
 
-
-    // ----------------------------------------------------------
-    // Callbacks
-    // ----------------------------------------------------------
+    // IMPORTANT:
+    // ICE candidates can arrive before the PeerConnection
+    // or before remoteDescription is available.
+    this.pendingIceCandidates = [];
 
     this.onRemoteStreamCallback = null;
-
     this.onIceCandidateCallback = null;
-
     this.onConnectionStateChangeCallback = null;
-
     this.onIceConnectionStateChangeCallback = null;
 
-    this.onIceGatheringStateChangeCallback = null;
+    console.log('[WebRTC] Client initialized');
   }
 
-
-  // ==========================================================
-  // LOAD ICE CONFIGURATION
-  // ==========================================================
+  // ============================================================
+  // LOAD ICE CONFIGURATION FROM BACKEND
+  // ============================================================
 
   async initConfig() {
-
     try {
-
       console.log('[WebRTC] Loading ICE configuration...');
 
       const data = await API.get('/calls/config');
@@ -107,90 +56,63 @@ class WebRTCClient {
         Array.isArray(data.ice_servers) &&
         data.ice_servers.length > 0
       ) {
-
         this.iceServers = data.ice_servers;
 
         console.log(
           '[WebRTC] ICE servers loaded:',
-          this.iceServers
+          this.iceServers.map(server => server.urls)
         );
-
       } else {
-
         console.warn(
           '[WebRTC] Backend returned no ICE servers. Using fallback STUN.'
         );
-
       }
-
-    } catch (e) {
-
+    } catch (error) {
       console.warn(
-        '[WebRTC] Could not load ICE configuration. Using fallback STUN servers.',
-        e
+        '[WebRTC] Could not load ICE config. Using fallback STUN.',
+        error
       );
-
     }
   }
 
-
-  // ==========================================================
+  // ============================================================
   // GET CAMERA / MICROPHONE
-  // ==========================================================
+  // ============================================================
 
   async getMediaStream(callType = 'video') {
-
     const isVideo = callType === 'video';
 
     this.isSynthetic = false;
 
+    console.log(
+      `[WebRTC] Requesting ${isVideo ? 'camera + microphone' : 'microphone'}`
+    );
 
-    // ----------------------------------------------------------
-    // Secure context check
-    // ----------------------------------------------------------
-
+    // WebRTC camera/mic requires HTTPS or localhost.
     if (window.isSecureContext === false) {
-
       console.warn(
-        '[WebRTC] Insecure origin. getUserMedia requires HTTPS or localhost.'
+        '[WebRTC] Insecure context. Camera/microphone requires HTTPS or localhost.'
       );
 
-      if (
-        typeof Utils !== 'undefined' &&
-        Utils.showToast
-      ) {
-
-        Utils.showToast(
-          'Camera/mic access requires HTTPS or localhost.',
-          'warning'
-        );
-
-      }
+      Utils.showToast(
+        'Camera/mic access requires HTTPS or localhost.',
+        'warning'
+      );
     }
-
-
-    // ----------------------------------------------------------
-    // Check browser media support
-    // ----------------------------------------------------------
 
     if (
       navigator.mediaDevices &&
-      typeof navigator.mediaDevices.getUserMedia === 'function'
+      navigator.mediaDevices.getUserMedia
     ) {
-
-      // ========================================================
-      // ATTEMPT 1
-      // ========================================================
+      // --------------------------------------------------------
+      // Attempt 1
+      // --------------------------------------------------------
 
       try {
-
-        console.log(
-          '[WebRTC] Requesting media with ideal constraints...'
-        );
+        console.log('[WebRTC] Media attempt 1');
 
         this.localStream =
           await navigator.mediaDevices.getUserMedia({
-
             audio: {
               echoCancellation: true,
               noiseSuppression: true,
@@ -204,1594 +126,1045 @@ class WebRTCClient {
               : false
           });
 
-
         console.log(
-          '[WebRTC] Media acquired successfully.',
-          this.getStreamInfo(this.localStream)
+          '[WebRTC] Real media acquired successfully'
         );
+
+        this.logStreamTracks(this.localStream);
 
         return this.localStream;
-
-      } catch (err1) {
-
+      } catch (error1) {
         console.warn(
           '[WebRTC] Media attempt 1 failed:',
-          err1.name,
-          err1.message
+          error1.name,
+          error1.message
+        );
+      }
+
+      // --------------------------------------------------------
+      // Attempt 2
+      // --------------------------------------------------------
+
+      try {
+        console.log('[WebRTC] Media attempt 2');
+
+        this.localStream =
+          await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: isVideo
+          });
+
+        console.log(
+          '[WebRTC] Simplified media acquired successfully'
         );
 
+        this.logStreamTracks(this.localStream);
 
-        // ======================================================
-        // ATTEMPT 2
-        // ======================================================
+        return this.localStream;
+      } catch (error2) {
+        console.warn(
+          '[WebRTC] Media attempt 2 failed:',
+          error2.name,
+          error2.message
+        );
+      }
 
+      // --------------------------------------------------------
+      // Attempt 3
+      // Video requested but camera failed.
+      // Use real microphone + synthetic video.
+      // --------------------------------------------------------
+
+      if (isVideo) {
         try {
-
           console.log(
-            '[WebRTC] Trying simplified media constraints...'
+            '[WebRTC] Trying microphone + synthetic video'
           );
 
-          this.localStream =
+          const audioStream =
             await navigator.mediaDevices.getUserMedia({
-
-              audio: true,
-
-              video: isVideo
-                ? true
-                : false
+              audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+              },
+              video: false
             });
 
+          const syntheticVideo =
+            this.createSyntheticVideoTrack();
 
-          console.log(
-            '[WebRTC] Simplified media acquired successfully.',
-            this.getStreamInfo(this.localStream)
+          if (syntheticVideo) {
+            audioStream.addTrack(syntheticVideo);
+          }
+
+          this.localStream = audioStream;
+
+          Utils.showToast(
+            'Camera unavailable. Using virtual video with real microphone.',
+            'info'
           );
+
+          this.logStreamTracks(this.localStream);
 
           return this.localStream;
-
-        } catch (err2) {
-
+        } catch (error3) {
           console.warn(
-            '[WebRTC] Media attempt 2 failed:',
-            err2.name,
-            err2.message
+            '[WebRTC] Audio-only fallback failed:',
+            error3.name,
+            error3.message
           );
-
-
-          // ====================================================
-          // ATTEMPT 3
-          // ====================================================
-          // If video call was requested but camera fails,
-          // keep the REAL microphone and create a virtual video.
-
-          if (isVideo) {
-
-            try {
-
-              console.log(
-                '[WebRTC] Camera unavailable. Trying audio-only + virtual video...'
-              );
-
-              const audioStream =
-                await navigator.mediaDevices.getUserMedia({
-                  audio: {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true
-                  },
-                  video: false
-                });
-
-
-              const syntheticVideo =
-                this.createSyntheticVideoTrack();
-
-
-              if (syntheticVideo) {
-
-                audioStream.addTrack(
-                  syntheticVideo
-                );
-
-              }
-
-
-              this.localStream = audioStream;
-
-              this.isSynthetic = true;
-
-
-              if (
-                typeof Utils !== 'undefined' &&
-                Utils.showToast
-              ) {
-
-                Utils.showToast(
-                  'Camera unavailable. Using virtual video with your real microphone.',
-                  'info'
-                );
-
-              }
-
-
-              console.log(
-                '[WebRTC] Audio-only + virtual video fallback active.',
-                this.getStreamInfo(this.localStream)
-              );
-
-
-              return this.localStream;
-
-            } catch (err3) {
-
-              console.warn(
-                '[WebRTC] Audio-only fallback failed:',
-                err3.name,
-                err3.message
-              );
-
-            }
-          }
         }
       }
     }
 
+    // ============================================================
+    // COMPLETE SYNTHETIC FALLBACK
+    // ============================================================
 
-    // ========================================================
-    // FINAL FALLBACK
-    // ========================================================
-    // Hardware unavailable / permission denied / unsupported.
-    //
-    // This creates a synthetic stream.
-    //
-    // IMPORTANT:
-    // Synthetic audio is intentionally silent.
-    // It is only a fallback for testing WebRTC signalling/media
-    // connection when no microphone is available.
-
-    console.info(
-      '[WebRTC] Falling back to synthetic virtual stream.'
+    console.warn(
+      '[WebRTC] Hardware unavailable. Using synthetic media.'
     );
-
 
     this.isSynthetic = true;
 
-
-    const syntheticStream =
-      new MediaStream();
-
+    const syntheticStream = new MediaStream();
 
     const syntheticAudio =
       this.createSyntheticAudioTrack();
 
-
     if (syntheticAudio) {
-
-      syntheticStream.addTrack(
-        syntheticAudio
-      );
-
+      syntheticStream.addTrack(syntheticAudio);
     }
 
-
     if (isVideo) {
-
       const syntheticVideo =
         this.createSyntheticVideoTrack();
 
-
       if (syntheticVideo) {
-
-        syntheticStream.addTrack(
-          syntheticVideo
-        );
-
+        syntheticStream.addTrack(syntheticVideo);
       }
     }
 
+    this.localStream = syntheticStream;
 
-    this.localStream =
-      syntheticStream;
-
-
-    if (
-      typeof Utils !== 'undefined' &&
-      Utils.showToast
-    ) {
-
-      Utils.showToast(
-        'Using virtual audio/video stream. Camera or microphone was not detected or permission was blocked.',
-        'info',
-        5000
-      );
-
-    }
-
-
-    console.log(
-      '[WebRTC] Synthetic stream created:',
-      this.getStreamInfo(this.localStream)
+    Utils.showToast(
+      'Using virtual audio/video because camera or microphone is unavailable.',
+      'info',
+      5000
     );
 
+    this.logStreamTracks(this.localStream);
 
     return this.localStream;
   }
 
+  // ============================================================
+  // LOG MEDIA TRACKS
+  // ============================================================
 
-  // ==========================================================
-  // STREAM DEBUG INFORMATION
-  // ==========================================================
-
-  getStreamInfo(stream) {
-
+  logStreamTracks(stream) {
     if (!stream) {
-
-      return {
-        audioTracks: 0,
-        videoTracks: 0
-      };
-
+      console.warn('[WebRTC] No media stream');
+      return;
     }
 
+    console.log(
+      '[WebRTC] Local audio tracks:',
+      stream.getAudioTracks().map(track => ({
+        id: track.id,
+        enabled: track.enabled,
+        readyState: track.readyState
+      }))
+    );
 
-    return {
-
-      audioTracks:
-        stream.getAudioTracks().map(track => ({
-          id: track.id,
-          label: track.label,
-          enabled: track.enabled,
-          muted: track.muted,
-          readyState: track.readyState
-        })),
-
-      videoTracks:
-        stream.getVideoTracks().map(track => ({
-          id: track.id,
-          label: track.label,
-          enabled: track.enabled,
-          muted: track.muted,
-          readyState: track.readyState
-        }))
-    };
+    console.log(
+      '[WebRTC] Local video tracks:',
+      stream.getVideoTracks().map(track => ({
+        id: track.id,
+        enabled: track.enabled,
+        readyState: track.readyState
+      }))
+    );
   }
 
-
-  // ==========================================================
-  // CREATE SYNTHETIC VIDEO TRACK
-  // ==========================================================
+  // ============================================================
+  // SYNTHETIC VIDEO
+  // ============================================================
 
   createSyntheticVideoTrack() {
+    const canvas = document.createElement('canvas');
 
-    try {
+    canvas.width = 640;
+    canvas.height = 480;
 
-      const canvas =
-        document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
 
+    if (!ctx) {
+      console.warn(
+        '[WebRTC] Canvas context unavailable'
+      );
+      return null;
+    }
 
-      canvas.width = 640;
-      canvas.height = 480;
+    const currentUser =
+      typeof Auth !== 'undefined' &&
+      Auth.getCurrentUser
+        ? Auth.getCurrentUser()
+        : {
+            display_name: 'You',
+            username: 'you'
+          };
 
+    const name =
+      currentUser?.display_name ||
+      currentUser?.username ||
+      'You';
 
-      const ctx =
-        canvas.getContext('2d');
+    let wave = 0;
 
+    const drawFrame = () => {
+      wave += 0.05;
 
-      if (!ctx) {
-
-        console.warn(
-          '[WebRTC] Canvas 2D context unavailable.'
-        );
-
-        return null;
-      }
-
-
-      const currentUser =
-        (
-          typeof Auth !== 'undefined' &&
-          Auth.getCurrentUser
-        )
-          ? Auth.getCurrentUser()
-          : {
-              display_name: 'You',
-              username: 'you'
-            };
-
-
-      const name =
-        currentUser.display_name ||
-        currentUser.username ||
-        'You';
-
-
-      let wave = 0;
-
-
-      const drawFrame = () => {
-
-        wave += 0.05;
-
-
-        // ------------------------------------------------------
-        // Background
-        // ------------------------------------------------------
-
-        const grad =
-          ctx.createLinearGradient(
-            0,
-            0,
-            640,
-            480
-          );
-
-
-        grad.addColorStop(
-          0,
-          '#1e1b4b'
-        );
-
-
-        grad.addColorStop(
-          1,
-          '#0f172a'
-        );
-
-
-        ctx.fillStyle = grad;
-
-        ctx.fillRect(
+      // Background
+      const gradient =
+        ctx.createLinearGradient(
           0,
           0,
           640,
           480
         );
 
+      gradient.addColorStop(
+        0,
+        '#1e1b4b'
+      );
 
-        // ------------------------------------------------------
-        // Ripple
-        // ------------------------------------------------------
+      gradient.addColorStop(
+        1,
+        '#0f172a'
+      );
 
-        const radius =
-          80 +
-          Math.sin(wave) * 10;
+      ctx.fillStyle = gradient;
 
+      ctx.fillRect(
+        0,
+        0,
+        640,
+        480
+      );
 
-        ctx.beginPath();
+      // Ripple
+      const radius =
+        80 + Math.sin(wave) * 10;
 
+      ctx.beginPath();
 
-        ctx.arc(
-          320,
-          210,
-          radius + 20,
-          0,
-          Math.PI * 2
-        );
+      ctx.arc(
+        320,
+        210,
+        radius + 20,
+        0,
+        Math.PI * 2
+      );
 
+      ctx.fillStyle =
+        'rgba(99, 102, 241, 0.2)';
 
-        ctx.fillStyle =
-          'rgba(99, 102, 241, 0.2)';
+      ctx.fill();
 
+      // Avatar
+      ctx.beginPath();
 
-        ctx.fill();
+      ctx.arc(
+        320,
+        210,
+        radius,
+        0,
+        Math.PI * 2
+      );
 
+      ctx.fillStyle =
+        '#4f46e5';
 
-        // ------------------------------------------------------
-        // Avatar
-        // ------------------------------------------------------
+      ctx.fill();
 
-        ctx.beginPath();
+      // Initial
+      ctx.fillStyle =
+        '#ffffff';
 
+      ctx.font =
+        'bold 54px sans-serif';
 
-        ctx.arc(
-          320,
-          210,
-          radius,
-          0,
-          Math.PI * 2
-        );
+      ctx.textAlign =
+        'center';
 
+      ctx.textBaseline =
+        'middle';
 
-        ctx.fillStyle =
-          '#4f46e5';
+      ctx.fillText(
+        name.charAt(0).toUpperCase(),
+        320,
+        210
+      );
 
+      // Name
+      ctx.font =
+        '600 24px sans-serif';
 
-        ctx.fill();
+      ctx.fillText(
+        name,
+        320,
+        340
+      );
 
+      // Status
+      ctx.font =
+        '14px sans-serif';
 
-        // ------------------------------------------------------
-        // Initial
-        // ------------------------------------------------------
+      ctx.fillStyle =
+        '#94a3b8';
 
-        ctx.fillStyle =
-          '#ffffff';
+      ctx.fillText(
+        'Virtual Video Stream',
+        320,
+        375
+      );
+    };
 
+    drawFrame();
 
-        ctx.font =
-          'bold 54px sans-serif';
+    this.syntheticAnimationTimer =
+      setInterval(
+        drawFrame,
+        100
+      );
 
-
-        ctx.textAlign =
-          'center';
-
-
-        ctx.textBaseline =
-          'middle';
-
-
-        ctx.fillText(
-          name.charAt(0).toUpperCase(),
-          320,
-          210
-        );
-
-
-        // ------------------------------------------------------
-        // Name
-        // ------------------------------------------------------
-
-        ctx.font =
-          '600 24px sans-serif';
-
-
-        ctx.fillText(
-          name,
-          320,
-          340
-        );
-
-
-        // ------------------------------------------------------
-        // Status
-        // ------------------------------------------------------
-
-        ctx.font =
-          '14px sans-serif';
-
-
-        ctx.fillStyle =
-          '#94a3b8';
-
-
-        ctx.fillText(
-          'Virtual Video Stream',
-          320,
-          375
-        );
-      };
-
-
-      drawFrame();
-
-
-      // --------------------------------------------------------
-      // Keep reference so cleanup() can stop it.
-      // --------------------------------------------------------
-
-      this.syntheticAnimationTimer =
-        setInterval(
-          drawFrame,
-          100
-        );
-
-
-      // --------------------------------------------------------
-      // Capture canvas as video stream
-      // --------------------------------------------------------
+    // Browser supports canvas.captureStream
+    if (canvas.captureStream) {
+      const stream =
+        canvas.captureStream(20);
 
       if (
-        typeof canvas.captureStream === 'function'
+        stream &&
+        stream.getVideoTracks().length > 0
       ) {
-
-        const stream =
-          canvas.captureStream(20);
-
-
-        const tracks =
-          stream.getVideoTracks();
-
-
-        if (
-          tracks &&
-          tracks.length > 0
-        ) {
-
-          return tracks[0];
-
-        }
+        return stream.getVideoTracks()[0];
       }
-
-
-      console.warn(
-        '[WebRTC] Canvas captureStream unavailable.'
-      );
-
-
-    } catch (e) {
-
-      console.warn(
-        '[WebRTC] Could not create synthetic video track:',
-        e
-      );
-
     }
 
+    // Fallback
+    try {
+      const blankCanvas =
+        document.createElement('canvas');
 
-    return null;
+      blankCanvas.width = 1;
+      blankCanvas.height = 1;
+
+      return blankCanvas
+        .captureStream()
+        .getVideoTracks()[0];
+    } catch (error) {
+      console.warn(
+        '[WebRTC] Could not create fallback video track:',
+        error
+      );
+
+      return null;
+    }
   }
 
-
-  // ==========================================================
-  // CREATE SYNTHETIC AUDIO TRACK
-  // ==========================================================
-  // This is intentionally silent.
-  //
-  // It is NOT a microphone replacement.
-  // It only provides an audio MediaStreamTrack so WebRTC can
-  // still negotiate an audio track during fallback/testing.
+  // ============================================================
+  // SYNTHETIC AUDIO
+  // ============================================================
 
   createSyntheticAudioTrack() {
-
     try {
-
-      const AudioCtx =
+      const AudioContext =
         window.AudioContext ||
         window.webkitAudioContext;
 
-
-      if (!AudioCtx) {
-
+      if (!AudioContext) {
         console.warn(
-          '[WebRTC] Web Audio API is unavailable.'
+          '[WebRTC] Web Audio API unavailable'
         );
 
         return null;
       }
 
-
       const ctx =
-        new AudioCtx();
+        new AudioContext();
 
+      this.syntheticAudioContext = ctx;
 
-      this.syntheticAudioContext =
-        ctx;
-
-
-      const osc =
+      const oscillator =
         ctx.createOscillator();
-
-
-      const gain =
-        ctx.createGain();
-
 
       const destination =
         ctx.createMediaStreamDestination();
 
+      const gain =
+        ctx.createGain();
 
-      // Very low gain = effectively silent.
+      // Very quiet signal to keep track alive.
       gain.gain.value = 0.0001;
 
-
-      osc.connect(gain);
+      oscillator.connect(gain);
 
       gain.connect(destination);
 
+      oscillator.start();
 
-      osc.start();
+      const track =
+        destination.stream.getAudioTracks()[0];
 
-
-      const tracks =
-        destination.stream.getAudioTracks();
-
-
-      if (
-        tracks &&
-        tracks.length > 0
-      ) {
-
-        return tracks[0];
-
-      }
-
-
-    } catch (e) {
-
+      return track || null;
+    } catch (error) {
       console.warn(
-        '[WebRTC] Could not create synthetic audio track:',
-        e
+        '[WebRTC] Could not create synthetic audio:',
+        error
       );
 
+      return null;
     }
-
-
-    return null;
   }
 
-
-  // ==========================================================
+  // ============================================================
   // CREATE PEER CONNECTION
-  // ==========================================================
+  // ============================================================
 
   createPeerConnection() {
+    console.log(
+      '[WebRTC] Creating RTCPeerConnection'
+    );
 
-    // ----------------------------------------------------------
-    // Close an old connection first
-    // ----------------------------------------------------------
+    console.log(
+      '[WebRTC] Using ICE servers:',
+      this.iceServers
+    );
 
+    // Close previous connection if one exists.
     if (this.peerConnection) {
-
       try {
-
         this.peerConnection.close();
-
-      } catch (e) {
-
+      } catch (error) {
         console.warn(
-          '[WebRTC] Error closing old peer connection:',
-          e
+          '[WebRTC] Error closing old connection:',
+          error
         );
-
       }
 
       this.peerConnection = null;
     }
 
+    this.peerConnection =
+      new RTCPeerConnection({
+        iceServers: this.iceServers,
 
-    // ----------------------------------------------------------
-    // Reset remote stream
-    // ----------------------------------------------------------
+        // Help ICE discover candidates quickly.
+        iceCandidatePoolSize: 10
+      });
 
     this.remoteStream =
       new MediaStream();
 
+    // IMPORTANT:
+    // DO NOT clear pendingIceCandidates here.
+    //
+    // Candidates may have arrived before this
+    // PeerConnection was created.
+    //
+    // They must remain queued.
 
-    // ----------------------------------------------------------
-    // Reset candidate queue
-    // ----------------------------------------------------------
-
-    this.pendingIceCandidates = [];
-
-
-    // ----------------------------------------------------------
-    // Create RTCPeerConnection
-    // ----------------------------------------------------------
-
-    console.log(
-      '[WebRTC] Creating RTCPeerConnection with ICE servers:',
-      this.iceServers
-    );
-
-
-    this.peerConnection =
-      new RTCPeerConnection({
-
-        iceServers:
-          this.iceServers,
-
-        // Give the browser some flexibility in connectivity.
-        iceCandidatePoolSize: 10
-      });
-
-
-    // ========================================================
+    // ==========================================================
     // ADD LOCAL TRACKS
-    // ========================================================
+    // ==========================================================
 
     if (this.localStream) {
-
-      const localTracks =
+      const tracks =
         this.localStream.getTracks();
-
 
       console.log(
         '[WebRTC] Adding local tracks:',
-        localTracks.map(track => ({
-          kind: track.kind,
-          id: track.id,
-          label: track.label,
-          enabled: track.enabled,
-          readyState: track.readyState
-        }))
+        tracks.map(track => track.kind)
       );
 
-
-      localTracks.forEach(track => {
-
+      tracks.forEach(track => {
         try {
-
           this.peerConnection.addTrack(
             track,
             this.localStream
           );
-
-        } catch (e) {
-
+        } catch (error) {
           console.error(
             '[WebRTC] Failed to add local track:',
-            track.kind,
-            e
+            error
           );
-
         }
-
       });
-
-    } else {
-
-      console.warn(
-        '[WebRTC] No local stream exists when creating PeerConnection.'
-      );
-
     }
 
-
-    // ========================================================
-    // REMOTE TRACK HANDLER
-    // ========================================================
+    // ==========================================================
+    // REMOTE TRACK
+    // ==========================================================
 
     this.peerConnection.ontrack =
       (event) => {
+        if (!event.track) {
+          console.warn(
+            '[WebRTC] ontrack event without track'
+          );
 
-        const track =
-          event.track;
-
+          return;
+        }
 
         console.log(
           '[WebRTC] Received remote track:',
-          {
-            kind: track.kind,
-            id: track.id,
-            label: track.label,
-            enabled: track.enabled,
-            muted: track.muted,
-            readyState: track.readyState
-          }
+          event.track.kind,
+          event.track.id
         );
 
-
-        // ----------------------------------------------------
-        // Add the individual track directly.
-        //
-        // This is safer than relying only on event.streams[0].
-        // ----------------------------------------------------
-
-        if (track) {
-
-          const alreadyExists =
-            this.remoteStream
-              .getTracks()
-              .some(
-                existingTrack =>
-                  existingTrack.id === track.id
-              );
-
-
-          if (!alreadyExists) {
-
-            this.remoteStream.addTrack(
-              track
+        // Add track only if it isn't already present.
+        const alreadyExists =
+          this.remoteStream
+            .getTracks()
+            .some(
+              track =>
+                track.id === event.track.id
             );
 
-          }
-
+        if (!alreadyExists) {
+          this.remoteStream.addTrack(
+            event.track
+          );
         }
-
-
-        // ----------------------------------------------------
-        // If the browser supplied a MediaStream, also make sure
-        // all tracks from it are available.
-        // ----------------------------------------------------
-
-        if (
-          event.streams &&
-          event.streams.length > 0
-        ) {
-
-          const remoteEventStream =
-            event.streams[0];
-
-
-          remoteEventStream
-            .getTracks()
-            .forEach(remoteTrack => {
-
-              const exists =
-                this.remoteStream
-                  .getTracks()
-                  .some(
-                    existingTrack =>
-                      existingTrack.id ===
-                      remoteTrack.id
-                  );
-
-
-              if (!exists) {
-
-                this.remoteStream.addTrack(
-                  remoteTrack
-                );
-
-              }
-
-            });
-
-        }
-
-
-        // ----------------------------------------------------
-        // Log current remote media
-        // ----------------------------------------------------
 
         console.log(
-          '[WebRTC] Remote stream updated:',
-          {
-            audioTracks:
-              this.remoteStream
-                .getAudioTracks()
-                .length,
-
-            videoTracks:
-              this.remoteStream
-                .getVideoTracks()
-                .length
-          }
+          '[WebRTC] Remote tracks now:',
+          this.remoteStream
+            .getTracks()
+            .map(track => track.kind)
         );
 
-
-        // ----------------------------------------------------
-        // Notify calls.js
-        // ----------------------------------------------------
-
         if (
-          typeof this.onRemoteStreamCallback ===
-          'function'
+          this.onRemoteStreamCallback
         ) {
-
           this.onRemoteStreamCallback(
             this.remoteStream
           );
-
         }
       };
 
-
-    // ========================================================
+    // ==========================================================
     // LOCAL ICE CANDIDATE
-    // ========================================================
+    // ==========================================================
 
     this.peerConnection.onicecandidate =
       (event) => {
-
-        if (!event.candidate) {
-
+        if (event.candidate) {
           console.log(
-            '[WebRTC] ICE gathering completed.'
+            '[WebRTC] Local ICE candidate:',
+            event.candidate.candidate
           );
 
-          return;
-        }
-
-
-        console.log(
-          '[WebRTC] Local ICE candidate:',
-          {
-            candidate:
-              event.candidate.candidate,
-
-            sdpMid:
-              event.candidate.sdpMid,
-
-            sdpMLineIndex:
-              event.candidate.sdpMLineIndex
+          if (
+            this.onIceCandidateCallback
+          ) {
+            this.onIceCandidateCallback(
+              event.candidate
+            );
           }
-        );
-
-
-        if (
-          typeof this.onIceCandidateCallback ===
-          'function'
-        ) {
-
-          this.onIceCandidateCallback(
-            event.candidate
-          );
-
         } else {
-
-          console.warn(
-            '[WebRTC] ICE candidate callback is not configured.'
+          console.log(
+            '[WebRTC] ICE candidate gathering complete'
           );
-
         }
       };
 
+    // ==========================================================
+    // ICE GATHERING STATE
+    // ==========================================================
 
-    // ========================================================
-    // CONNECTION STATE
-    // ========================================================
-
-    this.peerConnection.onconnectionstatechange =
+    this.peerConnection.onicegatheringstatechange =
       () => {
-
-        if (!this.peerConnection) {
-          return;
-        }
-
-
         const state =
-          this.peerConnection.connectionState;
-
+          this.peerConnection.iceGatheringState;
 
         console.log(
-          '[WebRTC] Connection state changed:',
+          '[WebRTC] ICE gathering state:',
           state
         );
-
-
-        if (
-          typeof this.onConnectionStateChangeCallback ===
-          'function'
-        ) {
-
-          this.onConnectionStateChangeCallback(
-            state
-          );
-
-        }
       };
 
-
-    // ========================================================
+    // ==========================================================
     // ICE CONNECTION STATE
-    // ========================================================
+    // ==========================================================
 
     this.peerConnection.oniceconnectionstatechange =
       () => {
-
-        if (!this.peerConnection) {
-          return;
-        }
-
-
         const state =
           this.peerConnection.iceConnectionState;
-
 
         console.log(
           '[WebRTC] ICE connection state:',
           state
         );
 
-
         if (
-          typeof this.onIceConnectionStateChangeCallback ===
-          'function'
+          this.onIceConnectionStateChangeCallback
         ) {
-
           this.onIceConnectionStateChangeCallback(
             state
           );
-
-        }
-      };
-
-
-    // ========================================================
-    // ICE GATHERING STATE
-    // ========================================================
-
-    this.peerConnection.onicegatheringstatechange =
-      () => {
-
-        if (!this.peerConnection) {
-          return;
         }
 
-
-        console.log(
-          '[WebRTC] ICE gathering state:',
-          this.peerConnection.iceGatheringState
-        );
-
-
-        if (
-          typeof this.onIceGatheringStateChangeCallback ===
-          'function'
-        ) {
-
-          this.onIceGatheringStateChangeCallback(
-            this.peerConnection.iceGatheringState
+        if (state === 'failed') {
+          console.error(
+            '[WebRTC] ICE connection FAILED.'
           );
 
+          console.error(
+            '[WebRTC] This usually means the peers could not establish a network path.'
+          );
+
+          console.error(
+            '[WebRTC] A TURN server may be required.'
+          );
+        }
+
+        if (state === 'disconnected') {
+          console.warn(
+            '[WebRTC] ICE connection disconnected.'
+          );
+        }
+
+        if (state === 'connected') {
+          console.log(
+            '[WebRTC] 🎉 ICE connection established!'
+          );
+        }
+
+        if (state === 'completed') {
+          console.log(
+            '[WebRTC] 🎉 ICE connection completed!'
+          );
         }
       };
 
+    // ==========================================================
+    // PEER CONNECTION STATE
+    // ==========================================================
 
-    // ========================================================
+    this.peerConnection.onconnectionstatechange =
+      () => {
+        const state =
+          this.peerConnection.connectionState;
+
+        console.log(
+          '[WebRTC] Connection state changed:',
+          state
+        );
+
+        if (
+          this.onConnectionStateChangeCallback
+        ) {
+          this.onConnectionStateChangeCallback(
+            state
+          );
+        }
+
+        if (state === 'connected') {
+          console.log(
+            '[WebRTC] 🎉 CALL CONNECTED'
+          );
+        }
+
+        if (state === 'failed') {
+          console.error(
+            '[WebRTC] ❌ CALL CONNECTION FAILED'
+          );
+        }
+
+        if (state === 'disconnected') {
+          console.warn(
+            '[WebRTC] Call temporarily disconnected'
+          );
+        }
+
+        if (state === 'closed') {
+          console.log(
+            '[WebRTC] PeerConnection closed'
+          );
+        }
+      };
+
+    // ==========================================================
     // SIGNALING STATE
-    // ========================================================
+    // ==========================================================
 
     this.peerConnection.onsignalingstatechange =
       () => {
-
-        if (!this.peerConnection) {
-          return;
-        }
-
-
         console.log(
           '[WebRTC] Signaling state:',
           this.peerConnection.signalingState
         );
       };
 
-
-    // ========================================================
+    // ==========================================================
     // ICE CANDIDATE ERROR
-    // ========================================================
+    // ==========================================================
 
     this.peerConnection.onicecandidateerror =
       (event) => {
-
-        console.warn(
+        console.error(
           '[WebRTC] ICE candidate error:',
           {
-            errorCode: event.errorCode,
-            errorText: event.errorText,
             url: event.url,
-            address: event.address,
-            port: event.port
+            errorCode: event.errorCode,
+            errorText: event.errorText
           }
         );
       };
 
-
     return this.peerConnection;
   }
 
-
-  // ==========================================================
-  // CREATE SDP OFFER
-  // ==========================================================
+  // ============================================================
+  // CREATE OFFER
+  // ============================================================
 
   async createOffer() {
-
-    if (!this.peerConnection) {
-
-      this.createPeerConnection();
-
-    }
-
-
-    if (!this.peerConnection) {
-
-      throw new Error(
-        'Unable to create WebRTC peer connection.'
-      );
-
-    }
-
-
     console.log(
-      '[WebRTC] Creating SDP offer...'
+      '[WebRTC] Creating offer...'
     );
 
+    if (!this.peerConnection) {
+      this.createPeerConnection();
+    }
 
     const offer =
       await this.peerConnection.createOffer({
-
         offerToReceiveAudio: true,
-
         offerToReceiveVideo: true
-
       });
 
+    console.log(
+      '[WebRTC] Offer created'
+    );
+
+    await this.peerConnection
+      .setLocalDescription(offer);
 
     console.log(
-      '[WebRTC] SDP offer created.'
+      '[WebRTC] Local offer description set'
     );
 
-
-    await this.peerConnection.setLocalDescription(
-      offer
-    );
-
-
-    console.log(
-      '[WebRTC] Local SDP description set.'
-    );
-
-
-    return offer;
+    return this.peerConnection.localDescription;
   }
 
-
-  // ==========================================================
+  // ============================================================
   // HANDLE OFFER AND CREATE ANSWER
-  // ==========================================================
+  // ============================================================
 
-  async handleOfferAndCreateAnswer(offerSdp) {
+  async handleOfferAndCreateAnswer(
+    offerSdp
+  ) {
+    console.log(
+      '[WebRTC] Received remote offer'
+    );
 
     if (!offerSdp) {
-
       throw new Error(
-        'No offer SDP received.'
+        'No WebRTC offer received'
       );
-
     }
 
-
     if (!this.peerConnection) {
-
       this.createPeerConnection();
-
     }
 
-
-    if (!this.peerConnection) {
-
-      throw new Error(
-        'Unable to create WebRTC peer connection.'
+    await this.peerConnection
+      .setRemoteDescription(
+        new RTCSessionDescription(
+          offerSdp
+        )
       );
 
-    }
-
-
     console.log(
-      '[WebRTC] Setting remote offer...'
+      '[WebRTC] Remote offer description set'
     );
 
-
-    await this.peerConnection.setRemoteDescription(
-      new RTCSessionDescription(
-        offerSdp
-      )
-    );
-
-
-    console.log(
-      '[WebRTC] Remote offer set successfully.'
-    );
-
-
-    // --------------------------------------------------------
-    // IMPORTANT:
-    // ICE candidates that arrived before the remote SDP are
-    // now safe to add.
-    // --------------------------------------------------------
-
+    // VERY IMPORTANT:
+    // ICE candidates that arrived before
+    // remoteDescription was available can
+    // now be added.
     await this.flushPendingIceCandidates();
-
-
-    console.log(
-      '[WebRTC] Creating SDP answer...'
-    );
-
 
     const answer =
-      await this.peerConnection.createAnswer();
-
-
-    await this.peerConnection.setLocalDescription(
-      answer
-    );
-
+      await this.peerConnection
+        .createAnswer();
 
     console.log(
-      '[WebRTC] Local SDP answer set.'
+      '[WebRTC] Answer created'
     );
 
+    await this.peerConnection
+      .setLocalDescription(answer);
 
-    return answer;
+    console.log(
+      '[WebRTC] Local answer description set'
+    );
+
+    return this.peerConnection.localDescription;
   }
 
-
-  // ==========================================================
+  // ============================================================
   // HANDLE ANSWER
-  // ==========================================================
+  // ============================================================
 
   async handleAnswer(answerSdp) {
+    console.log(
+      '[WebRTC] Received remote answer'
+    );
 
     if (!answerSdp) {
-
       throw new Error(
-        'No answer SDP received.'
+        'No WebRTC answer received'
       );
-
     }
-
 
     if (!this.peerConnection) {
-
-      console.warn(
-        '[WebRTC] Received answer but peer connection does not exist.'
+      throw new Error(
+        'PeerConnection does not exist while handling answer'
       );
-
-      return;
-
     }
 
+    await this.peerConnection
+      .setRemoteDescription(
+        new RTCSessionDescription(
+          answerSdp
+        )
+      );
 
     console.log(
-      '[WebRTC] Setting remote answer...'
+      '[WebRTC] Remote answer description set'
     );
 
-
-    await this.peerConnection.setRemoteDescription(
-      new RTCSessionDescription(
-        answerSdp
-      )
-    );
-
-
-    console.log(
-      '[WebRTC] Remote answer set successfully.'
-    );
-
-
-    // --------------------------------------------------------
-    // Flush candidates that arrived before the answer.
-    // --------------------------------------------------------
-
+    // Now queued ICE candidates can be added.
     await this.flushPendingIceCandidates();
   }
 
-
-  // ==========================================================
+  // ============================================================
   // ADD REMOTE ICE CANDIDATE
-  // ==========================================================
+  // ============================================================
 
-  async addIceCandidate(candidateInit) {
-
+  async addIceCandidate(
+    candidateInit
+  ) {
     if (!candidateInit) {
-
-      console.warn(
-        '[WebRTC] Empty ICE candidate received.'
-      );
-
       return;
     }
 
-
-    // --------------------------------------------------------
-    // If PeerConnection does not exist yet, queue it.
-    // --------------------------------------------------------
-
-    if (!this.peerConnection) {
-
-      console.log(
-        '[WebRTC] Queueing ICE candidate because PeerConnection is not ready.'
-      );
-
-
-      this.pendingIceCandidates.push(
-        candidateInit
-      );
-
-
-      return;
-    }
-
-
-    // --------------------------------------------------------
-    // If remote description has not been set yet, queue it.
-    // --------------------------------------------------------
+    // ----------------------------------------------------------
+    // IMPORTANT FIX
+    //
+    // If PeerConnection doesn't exist yet OR remoteDescription
+    // isn't ready, queue the candidate.
+    // ----------------------------------------------------------
 
     if (
+      !this.peerConnection ||
       !this.peerConnection.remoteDescription
     ) {
-
       console.log(
-        '[WebRTC] Queueing ICE candidate because remote description is not ready.'
+        '[WebRTC] Queueing ICE candidate because PeerConnection/remoteDescription is not ready'
       );
-
 
       this.pendingIceCandidates.push(
         candidateInit
       );
 
+      console.log(
+        '[WebRTC] Pending ICE candidates:',
+        this.pendingIceCandidates.length
+      );
 
       return;
     }
 
-
-    // --------------------------------------------------------
-    // Add immediately.
-    // --------------------------------------------------------
-
     try {
-
       const candidate =
-        candidateInit instanceof RTCIceCandidate
-          ? candidateInit
-          : new RTCIceCandidate(
-              candidateInit
-            );
+        new RTCIceCandidate(
+          candidateInit
+        );
 
-
-      await this.peerConnection.addIceCandidate(
-        candidate
-      );
-
+      await this.peerConnection
+        .addIceCandidate(candidate);
 
       console.log(
-        '[WebRTC] Remote ICE candidate added successfully.'
+        '[WebRTC] Remote ICE candidate added'
       );
-
-
-    } catch (err) {
-
-      console.warn(
+    } catch (error) {
+      console.error(
         '[WebRTC] Error adding ICE candidate:',
-        err
+        error
       );
-
     }
   }
 
-
-  // ==========================================================
+  // ============================================================
   // FLUSH QUEUED ICE CANDIDATES
-  // ==========================================================
+  // ============================================================
 
   async flushPendingIceCandidates() {
-
     if (
-      !this.peerConnection
-    ) {
-
-      return;
-    }
-
-
-    if (
+      !this.peerConnection ||
       !this.peerConnection.remoteDescription
     ) {
-
       console.log(
-        '[WebRTC] Cannot flush ICE candidates yet. Remote description is missing.'
+        '[WebRTC] Cannot flush ICE yet'
       );
 
       return;
     }
-
 
     if (
       this.pendingIceCandidates.length === 0
     ) {
-
       return;
     }
 
-
     console.log(
-      `[WebRTC] Flushing ${this.pendingIceCandidates.length} queued ICE candidate(s)...`
+      '[WebRTC] Flushing pending ICE candidates:',
+      this.pendingIceCandidates.length
     );
-
 
     const candidates =
       [...this.pendingIceCandidates];
 
-
     this.pendingIceCandidates = [];
-
 
     for (
       const candidateInit of candidates
     ) {
-
       try {
-
-        const candidate =
-          candidateInit instanceof RTCIceCandidate
-            ? candidateInit
-            : new RTCIceCandidate(
-                candidateInit
-              );
-
-
-        await this.peerConnection.addIceCandidate(
-          candidate
-        );
-
+        await this.peerConnection
+          .addIceCandidate(
+            new RTCIceCandidate(
+              candidateInit
+            )
+          );
 
         console.log(
-          '[WebRTC] Queued ICE candidate added.'
+          '[WebRTC] Queued ICE candidate added successfully'
         );
-
-
-      } catch (err) {
-
-        console.warn(
+      } catch (error) {
+        console.error(
           '[WebRTC] Failed to add queued ICE candidate:',
-          err
+          error
         );
-
       }
     }
   }
 
-
-  // ==========================================================
+  // ============================================================
   // TOGGLE MICROPHONE
-  // ==========================================================
+  // ============================================================
 
   toggleAudio(enabled) {
-
     if (!this.localStream) {
-
-      console.warn(
-        '[WebRTC] Cannot toggle microphone: no local stream.'
-      );
-
       return;
     }
 
-
-    const audioTracks =
-      this.localStream.getAudioTracks();
-
+    this.localStream
+      .getAudioTracks()
+      .forEach(track => {
+        track.enabled = enabled;
+      });
 
     console.log(
-      '[WebRTC] Setting microphone enabled:',
-      enabled
+      '[WebRTC] Microphone:',
+      enabled ? 'enabled' : 'disabled'
     );
-
-
-    audioTracks.forEach(track => {
-
-      track.enabled =
-        Boolean(enabled);
-
-    });
   }
 
-
-  // ==========================================================
+  // ============================================================
   // TOGGLE CAMERA
-  // ==========================================================
+  // ============================================================
 
   toggleVideo(enabled) {
-
     if (!this.localStream) {
+      return;
+    }
 
-      console.warn(
-        '[WebRTC] Cannot toggle camera: no local stream.'
+    this.localStream
+      .getVideoTracks()
+      .forEach(track => {
+        track.enabled = enabled;
+      });
+
+    console.log(
+      '[WebRTC] Camera:',
+      enabled ? 'enabled' : 'disabled'
+    );
+  }
+
+  // ============================================================
+  // SWITCH CAMERA
+  // ============================================================
+
+  async switchCamera() {
+    if (this.isSynthetic) {
+      Utils.showToast(
+        'Using virtual camera in preview mode.',
+        'info'
       );
 
       return;
     }
 
-
-    const videoTracks =
-      this.localStream.getVideoTracks();
-
-
-    console.log(
-      '[WebRTC] Setting camera enabled:',
-      enabled
-    );
-
-
-    videoTracks.forEach(track => {
-
-      track.enabled =
-        Boolean(enabled);
-
-    });
-  }
-
-
-  // ==========================================================
-  // SWITCH CAMERA
-  // ==========================================================
-
-  async switchCamera() {
-
-    // --------------------------------------------------------
-    // Synthetic camera
-    // --------------------------------------------------------
-
-    if (this.isSynthetic) {
-
-      if (
-        typeof Utils !== 'undefined' &&
-        Utils.showToast
-      ) {
-
-        Utils.showToast(
-          'Using virtual camera in preview mode.',
-          'info'
-        );
-
-      }
-
-      return null;
-    }
-
-
-    // --------------------------------------------------------
-    // Check local stream
-    // --------------------------------------------------------
-
     if (!this.localStream) {
-
-      console.warn(
-        '[WebRTC] Cannot switch camera: no local stream.'
-      );
-
-      return null;
+      return;
     }
 
+    const currentVideoTrack =
+      this.localStream
+        .getVideoTracks()[0];
 
-    const videoTrack =
-      this.localStream.getVideoTracks()[0];
-
-
-    if (!videoTrack) {
-
-      console.warn(
-        '[WebRTC] Cannot switch camera: no video track.'
-      );
-
-      return null;
+    if (!currentVideoTrack) {
+      return;
     }
-
-
-    // --------------------------------------------------------
-    // Toggle facing mode
-    // --------------------------------------------------------
 
     this.currentFacingMode =
       this.currentFacingMode === 'user'
         ? 'environment'
         : 'user';
 
-
-    console.log(
-      '[WebRTC] Switching camera to:',
-      this.currentFacingMode
-    );
-
-
     try {
-
       const newStream =
-        await navigator.mediaDevices.getUserMedia({
-
-          video: {
-            facingMode:
-              this.currentFacingMode
-          },
-
-          audio: false
-
-        });
-
+        await navigator.mediaDevices
+          .getUserMedia({
+            video: {
+              facingMode:
+                this.currentFacingMode
+            }
+          });
 
       const newVideoTrack =
-        newStream.getVideoTracks()[0];
-
+        newStream
+          .getVideoTracks()[0];
 
       if (!newVideoTrack) {
-
         throw new Error(
-          'New camera did not provide a video track.'
+          'New camera track unavailable'
         );
-
       }
 
-
-      // ------------------------------------------------------
-      // Replace WebRTC sender track
-      // ------------------------------------------------------
-
+      // Replace WebRTC sender track.
       if (this.peerConnection) {
-
         const senders =
-          this.peerConnection.getSenders();
-
+          this.peerConnection
+            .getSenders();
 
         const sender =
           senders.find(
@@ -1800,368 +1173,160 @@ class WebRTCClient {
               s.track.kind === 'video'
           );
 
-
         if (sender) {
-
           await sender.replaceTrack(
             newVideoTrack
           );
-
-
-          console.log(
-            '[WebRTC] Camera sender track replaced.'
-          );
-
-        } else {
-
-          console.warn(
-            '[WebRTC] No video sender found.'
-          );
-
         }
       }
 
+      // Replace local track.
+      currentVideoTrack.stop();
 
-      // ------------------------------------------------------
-      // Replace local stream track
-      // ------------------------------------------------------
+      this.localStream
+        .removeTrack(
+          currentVideoTrack
+        );
 
-      videoTrack.stop();
-
-
-      this.localStream.removeTrack(
-        videoTrack
-      );
-
-
-      this.localStream.addTrack(
-        newVideoTrack
-      );
-
+      this.localStream
+        .addTrack(
+          newVideoTrack
+        );
 
       console.log(
-        '[WebRTC] Camera switched successfully.'
+        '[WebRTC] Camera switched to:',
+        this.currentFacingMode
       );
-
 
       return newVideoTrack;
-
-
-    } catch (e) {
-
+    } catch (error) {
       console.warn(
         '[WebRTC] Camera switch failed:',
-        e
+        error
       );
-
-
-      // ------------------------------------------------------
-      // Restore previous facing mode because switching failed.
-      // ------------------------------------------------------
-
-      this.currentFacingMode =
-        this.currentFacingMode === 'user'
-          ? 'environment'
-          : 'user';
-
-
-      return null;
     }
   }
 
+  // ============================================================
+  // GET REMOTE STREAM
+  // ============================================================
 
-  // ==========================================================
-  // GET LOCAL AUDIO TRACK
-  // ==========================================================
-
-  getAudioTrack() {
-
-    if (!this.localStream) {
-
-      return null;
-    }
-
-
-    return this.localStream
-      .getAudioTracks()[0] || null;
+  getRemoteStream() {
+    return this.remoteStream;
   }
 
+  // ============================================================
+  // GET CONNECTION STATE
+  // ============================================================
 
-  // ==========================================================
-  // GET LOCAL VIDEO TRACK
-  // ==========================================================
-
-  getVideoTrack() {
-
-    if (!this.localStream) {
-
-      return null;
-    }
-
-
-    return this.localStream
-      .getVideoTracks()[0] || null;
-  }
-
-
-  // ==========================================================
-  // GET REMOTE AUDIO TRACKS
-  // ==========================================================
-
-  getRemoteAudioTracks() {
-
-    if (!this.remoteStream) {
-
-      return [];
-    }
-
-
-    return this.remoteStream
-      .getAudioTracks();
-  }
-
-
-  // ==========================================================
-  // GET REMOTE VIDEO TRACKS
-  // ==========================================================
-
-  getRemoteVideoTracks() {
-
-    if (!this.remoteStream) {
-
-      return [];
-    }
-
-
-    return this.remoteStream
-      .getVideoTracks();
-  }
-
-
-  // ==========================================================
-  // DEBUG STATE
-  // ==========================================================
-
-  getConnectionInfo() {
-
+  getConnectionState() {
     if (!this.peerConnection) {
-
-      return {
-        peerConnection: false,
-        connectionState: null,
-        iceConnectionState: null,
-        iceGatheringState: null,
-        signalingState: null
-      };
+      return 'closed';
     }
 
-
-    return {
-
-      peerConnection: true,
-
-      connectionState:
-        this.peerConnection.connectionState,
-
-      iceConnectionState:
-        this.peerConnection.iceConnectionState,
-
-      iceGatheringState:
-        this.peerConnection.iceGatheringState,
-
-      signalingState:
-        this.peerConnection.signalingState,
-
-      localDescription:
-        Boolean(
-          this.peerConnection.localDescription
-        ),
-
-      remoteDescription:
-        Boolean(
-          this.peerConnection.remoteDescription
-        ),
-
-      pendingIceCandidates:
-        this.pendingIceCandidates.length,
-
-      localAudioTracks:
-        this.localStream
-          ? this.localStream
-              .getAudioTracks()
-              .length
-          : 0,
-
-      localVideoTracks:
-        this.localStream
-          ? this.localStream
-              .getVideoTracks()
-              .length
-          : 0,
-
-      remoteAudioTracks:
-        this.remoteStream
-          ? this.remoteStream
-              .getAudioTracks()
-              .length
-          : 0,
-
-      remoteVideoTracks:
-        this.remoteStream
-          ? this.remoteStream
-              .getVideoTracks()
-              .length
-          : 0
-    };
+    return this.peerConnection
+      .connectionState;
   }
 
+  // ============================================================
+  // GET ICE CONNECTION STATE
+  // ============================================================
 
-  // ==========================================================
+  getIceConnectionState() {
+    if (!this.peerConnection) {
+      return 'closed';
+    }
+
+    return this.peerConnection
+      .iceConnectionState;
+  }
+
+  // ============================================================
   // CLEANUP
-  // ==========================================================
+  // ============================================================
 
   cleanup() {
-
     console.log(
-      '[WebRTC] Cleaning up WebRTC resources...'
+      '[WebRTC] Cleaning up call'
     );
 
-
-    // --------------------------------------------------------
-    // Stop synthetic video animation
-    // --------------------------------------------------------
-
-    if (
-      this.syntheticAnimationTimer
-    ) {
-
+    // Stop synthetic video animation.
+    if (this.syntheticAnimationTimer) {
       clearInterval(
         this.syntheticAnimationTimer
       );
-
 
       this.syntheticAnimationTimer =
         null;
     }
 
-
-    // --------------------------------------------------------
-    // Stop local media tracks
-    // --------------------------------------------------------
-
+    // Stop local tracks.
     if (this.localStream) {
-
       this.localStream
         .getTracks()
         .forEach(track => {
-
           try {
-
             track.stop();
-
-          } catch (e) {
-
+          } catch (error) {
             console.warn(
-              '[WebRTC] Error stopping local track:',
-              e
+              '[WebRTC] Error stopping track:',
+              error
             );
-
           }
-
         });
 
-
-      this.localStream =
-        null;
+      this.localStream = null;
     }
 
-
-    // --------------------------------------------------------
-    // Close peer connection
-    // --------------------------------------------------------
-
+    // Close peer connection.
     if (this.peerConnection) {
-
       try {
-
         this.peerConnection.close();
-
-      } catch (e) {
-
+      } catch (error) {
         console.warn(
           '[WebRTC] Error closing PeerConnection:',
-          e
+          error
         );
-
       }
 
-
-      this.peerConnection =
-        null;
+      this.peerConnection = null;
     }
 
-
-    // --------------------------------------------------------
-    // Close synthetic audio context
-    // --------------------------------------------------------
-
-    if (
-      this.syntheticAudioContext
-    ) {
-
+    // Close synthetic audio context.
+    if (this.syntheticAudioContext) {
       try {
-
         this.syntheticAudioContext.close();
-
-      } catch (e) {
-
+      } catch (error) {
         console.warn(
-          '[WebRTC] Error closing synthetic AudioContext:',
-          e
+          '[WebRTC] Error closing audio context:',
+          error
         );
-
       }
-
 
       this.syntheticAudioContext =
         null;
     }
 
+    // Reset remote stream.
+    this.remoteStream = null;
 
-    // --------------------------------------------------------
-    // Reset remote stream
-    // --------------------------------------------------------
+    // VERY IMPORTANT:
+    // Clear stale ICE candidates when
+    // the call is completely over.
+    this.pendingIceCandidates = [];
 
-    this.remoteStream =
-      null;
-
-
-    // --------------------------------------------------------
-    // Clear ICE queue
-    // --------------------------------------------------------
-
-    this.pendingIceCandidates =
-      [];
-
-
-    // --------------------------------------------------------
-    // Reset synthetic state
-    // --------------------------------------------------------
-
-    this.isSynthetic =
-      false;
-
+    this.isSynthetic = false;
 
     console.log(
-      '[WebRTC] Cleanup complete.'
+      '[WebRTC] Cleanup complete'
     );
   }
 }
 
 
-// ============================================================
+// ================================================================
 // GLOBAL WEBRTC INSTANCE
-// ============================================================
+// ================================================================
 
 const webrtc =
   new WebRTCClient();
