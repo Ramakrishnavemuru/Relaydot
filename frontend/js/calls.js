@@ -113,7 +113,7 @@ const Calls = {
         this.isAudioMuted = !this.isAudioMuted;
         webrtc.toggleAudio(!this.isAudioMuted);
         this.elements.btnMuteMic.classList.toggle('muted', this.isAudioMuted);
-        this.elements.btnMuteMic.innerHTML = this.isAudioMuted ? '🔇' : '🎤';
+        this.elements.btnMuteMic.innerHTML = AppUI.icon(this.isAudioMuted ? 'mic-off' : 'mic');
         Utils.showToast(this.isAudioMuted ? 'Microphone muted' : 'Microphone unmuted', 'info');
       });
     }
@@ -123,7 +123,7 @@ const Calls = {
         this.isVideoMuted = !this.isVideoMuted;
         webrtc.toggleVideo(!this.isVideoMuted);
         this.elements.btnToggleCam.classList.toggle('off', this.isVideoMuted);
-        this.elements.btnToggleCam.innerHTML = this.isVideoMuted ? '🚫' : '📹';
+        this.elements.btnToggleCam.innerHTML = AppUI.icon(this.isVideoMuted ? 'video-off' : 'video');
         Utils.showToast(this.isVideoMuted ? 'Camera disabled' : 'Camera enabled', 'info');
       });
     }
@@ -203,7 +203,7 @@ const Calls = {
     };
 
     // Render incoming banner
-    const avatar = API.resolveUrl(data.caller_avatar) || `https://api.dicebear.com/7.x/initials/svg?seed=${data.caller_name}`;
+    const avatar = AppUI.avatarUrl(data.caller_avatar,data.caller_name);
     this.elements.incomingAvatar.src = avatar;
     this.elements.incomingName.textContent = data.caller_name;
     this.elements.incomingType.textContent = `Incoming ${data.call_type === 'video' ? 'Video' : 'Voice'} Call...`;
@@ -328,17 +328,17 @@ const Calls = {
     this.isVideoMuted = false;
     if (this.elements.btnMuteMic) {
       this.elements.btnMuteMic.classList.remove('muted');
-      this.elements.btnMuteMic.innerHTML = '🎤';
+      this.elements.btnMuteMic.innerHTML = AppUI.icon('mic');
     }
     if (this.elements.btnToggleCam) {
       this.elements.btnToggleCam.classList.remove('off');
-      this.elements.btnToggleCam.innerHTML = '📹';
+      this.elements.btnToggleCam.innerHTML = AppUI.icon('video');
     }
   },
 
   showCallModal(callInfo) {
     const isVideo = callInfo.callType === 'video';
-    const avatar = API.resolveUrl(callInfo.peerAvatar) || `https://api.dicebear.com/7.x/initials/svg?seed=${callInfo.peerName}`;
+    const avatar = AppUI.avatarUrl(callInfo.peerAvatar,callInfo.peerName);
 
     this.elements.peerName.textContent = callInfo.peerName;
     this.elements.voiceAvatar.src = avatar;

@@ -1,9 +1,15 @@
 // Real-Time Chat Application Engine
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   // Enforce authentication
   if (!Auth.requireAuth()) return;
 
-  const currentUser = Auth.getCurrentUser();
+  let currentUser;
+  try { currentUser = await Auth.fetchMyProfile(); }
+  catch {
+    currentUser = Auth.getCurrentUser();
+    if (!currentUser || !Auth.isAuthenticated()) return;
+    Utils.showToast('Your profile couldn’t refresh. Showing your saved account while reconnecting.', 'warning');
+  }
   let conversations = [];
   let activeConversation = null;
   let messages = [];
@@ -12,6 +18,57 @@ document.addEventListener('DOMContentLoaded', () => {
   let pendingAttachments = [];
   let typingTimer = null;
   let isTyping = false;
+  let activeFilter = 'all';
+  let messageRequest = 0;
+  let conversationRequest = 0;
+  let hasEarlier = false;
+  let loadingEarlier = false;
+  let uploading = 0;
+  let selectedSharedTab = 'media';
+  const outboxKey = `relay-outbox-${currentUser.id}`;
+  const outbox = new Map(AppUI.read(outboxKey,[]).filter(m => m.sender_id === currentUser.id && String(m.id).startsWith('local-') && m.payload).map(m => [m.id,{...m,status:'FAILED',requesting:false}]));
+  const saveOutbox = () => AppUI.write(outboxKey,[...outbox.values()].map(({requesting,...entry}) => entry));
+  const preferenceKey = `relay-chats-${currentUser.id}`;
+  const draftKey = `relay-drafts-${currentUser.id}`;
+  const preferences = AppUI.read(preferenceKey, {});
+  const drafts = AppUI.read(draftKey, {});
+  const chatName = conv => conv.name || conv.other_user?.display_name || conv.other_user?.username || 'Conversation';
+  const chatAvatar = conv => AppUI.avatarUrl(conv.avatar_url || conv.other_user?.avatar_url,chatName(conv));
+  const pref = id => preferences[id] || {};
+  const viewingSearchHistory = () => !document.getElementById('history-context').classList.contains('hidden');
+  const visibleChat = id => activeConversation?.id === id && !viewingSearchHistory() && document.visibilityState === 'visible' && (innerWidth > 768 || document.body.classList.contains('mobile-chat-open'));
+  const saveDraft = () => {
+    if (!activeConversation || editingMessage) return;
+    const text = elements.messageInput.value;
+    if (text || pendingAttachments.length) drafts[activeConversation.id] = {text, attachments: pendingAttachments};
+    else delete drafts[activeConversation.id];
+    AppUI.write(draftKey, drafts);
+  };
+  const syncComposer = () => {
+    elements.btnSendMessage.disabled = uploading > 0 || (!elements.messageInput.value.trim() && !pendingAttachments.length);
+    elements.btnSendMessage.setAttribute('aria-label', editingMessage ? 'Save edited message' : 'Send message');
+    elements.messageInput.style.height = 'auto';
+    elements.messageInput.style.height = Math.min(elements.messageInput.scrollHeight, 140) + 'px';
+  };
+  const markRead = async conv => {
+    if (!visibleChat(conv.id)) return;
+    if (!WSClient.send(CONFIG.EVENTS.READ, {conversation_id: conv.id})) {
+      try { await API.post('/messages/read', {conversation_id: conv.id}); } catch { return; }
+    }
+    conv.unread_count = 0;
+    renderConversationsList();
+  };
+  const updatePreference = (id, key) => {
+    preferences[id] = {...pref(id), [key]: !pref(id)[key]};
+    if (!AppUI.write(preferenceKey, preferences)) Utils.showToast('Your browser could not save this preference.', 'warning');
+    renderConversationsList();
+  };
+  const openChatMenu = (trigger, conv) => AppUI.showMenu(trigger, [
+    {label: pref(conv.id).pinned ? 'Unpin conversation' : 'Pin conversation', icon: 'pin', run: () => updatePreference(conv.id,'pinned')},
+    {label: pref(conv.id).favorite ? 'Remove from favorites' : 'Add to favorites', icon: 'star', run: () => updatePreference(conv.id,'favorite')},
+    {label: pref(conv.id).muted ? 'Unmute notifications' : 'Mute notifications', icon: 'bell-off', run: () => updatePreference(conv.id,'muted')},
+    {label: pref(conv.id).archived ? 'Move to all chats' : 'Archive conversation', icon: 'archive', run: () => updatePreference(conv.id,'archived')}
+  ]);
 
   // DOM Elements
   const elements = {
@@ -80,24 +137,38 @@ document.addEventListener('DOMContentLoaded', () => {
   // Setup current user profile in header
   const initUserHeader = () => {
     if (elements.myAvatar) {
-      elements.myAvatar.src = API.resolveUrl(currentUser.avatar_url) || `https://api.dicebear.com/7.x/initials/svg?seed=${currentUser.username}`;
+      elements.myAvatar.src = AppUI.avatarUrl(currentUser.avatar_url,currentUser.display_name || currentUser.username);
     }
     if (elements.myName) {
       elements.myName.textContent = currentUser.display_name || currentUser.username;
     }
   };
 
-  // Connect WebSocket
+  // Existing socket events remain the source of live updates.
   const initWebSocket = () => {
+    let connectedOnce = false;
+    const connection = connected => {
+      elements.myStatusDot.className = `online-dot ${connected ? 'online' : 'offline'}`;
+      document.querySelector('.connection-dot').classList.toggle('disconnected', !connected);
+      document.getElementById('connection-label').textContent = connected ? 'Connected' : navigator.onLine ? 'Reconnecting…' : 'You’re offline';
+      document.getElementById('connection-banner').classList.toggle('hidden', connected);
+      document.getElementById('connection-message').textContent = navigator.onLine ? 'Connection interrupted. Reconnecting…' : 'You’re offline. Your draft stays here until you’re back.';
+    };
+    WSClient.on('connection_open', async () => {
+      connection(true);
+      if (connectedOnce) {
+        Utils.showToast('Connection restored', 'success');
+        await loadConversations();
+        if (activeConversation && !viewingSearchHistory()) await loadMessageHistory(activeConversation, true);
+      }
+      connectedOnce = true;
+    });
+    WSClient.on('connection_close', () => connection(false));
+    WSClient.on('connection_error', () => connection(false));
+    window.addEventListener('offline', () => connection(false));
+    window.addEventListener('online', () => { WSClient.connect(); });
+    document.getElementById('btn-reconnect').onclick = () => { WSClient.reconnectAttempts = 0; WSClient.connect(); };
     WSClient.connect();
-
-    WSClient.on('connection_open', () => {
-      if (elements.myStatusDot) elements.myStatusDot.className = 'online-dot online';
-    });
-
-    WSClient.on('connection_close', () => {
-      if (elements.myStatusDot) elements.myStatusDot.className = 'online-dot offline';
-    });
 
     // Incoming new message
     WSClient.on(CONFIG.EVENTS.MESSAGE, (msg) => {
@@ -147,163 +218,187 @@ document.addEventListener('DOMContentLoaded', () => {
     WSClient.on(CONFIG.EVENTS.OFFLINE, (data) => {
       updateUserPresence(data.user_id, false, data.last_seen);
     });
+    WSClient.on(CONFIG.EVENTS.DELIVERED, data => {
+      messages.filter(m => m.id === data.message_id || data.message_ids?.includes(m.id)).forEach(m => {
+        if (m.status !== 'READ') { m.status = 'DELIVERED'; document.getElementById(`msg-${m.id}`)?.replaceWith(createMessageElement(m)); }
+      });
+    });
+    [CONFIG.EVENTS.CONVERSATION_NEW, CONFIG.EVENTS.CONVERSATION_UPDATE, 'member_joined', 'member_left'].forEach(event => WSClient.on(event, () => loadConversations()));
+    WSClient.on('error', () => Utils.showToast('That action could not be completed. Please try again.', 'error'));
   };
 
-  // Load user's conversations
   const loadConversations = async () => {
+    const request = ++conversationRequest;
     try {
-      conversations = await API.get('/conversations');
+      const result = await API.get('/conversations');
+      if (request !== conversationRequest) return;
+      conversations = result;
+      if (activeConversation) {
+        const refreshed = conversations.find(c => c.id === activeConversation.id);
+        if (refreshed) {
+          activeConversation = refreshed;
+          updateChatHeader();
+          if (elements.modalGroupInfo.classList.contains('active')) setupChatInfoModal();
+        } else closeConversation();
+      }
       renderConversationsList();
-    } catch (err) {
-      Utils.showToast('Failed to load conversations: ' + err.message, 'error');
+    } catch {
+      if (request !== conversationRequest) return;
+      elements.conversationsList.innerHTML = '<div class="list-empty"><span data-icon="wifi-off"></span><h3>Conversations couldn’t load</h3><p>Check your connection and try again.</p><button class="btn btn-secondary" id="btn-retry-conversations">Try again</button></div>';
+      document.getElementById('btn-retry-conversations').onclick = loadConversations;
     }
   };
 
-  // Render conversations sidebar
-  const renderConversationsList = (filterText = '') => {
+  const renderConversationsList = () => {
     if (!elements.conversationsList) return;
-    elements.conversationsList.innerHTML = '';
-
+    const q = elements.convSearchInput.value.trim();
     const filtered = conversations.filter(c => {
-      const name = c.name || (c.other_user && (c.other_user.display_name || c.other_user.username)) || 'Chat';
-      return name.toLowerCase().includes(filterText.toLowerCase());
-    });
-
-    if (filtered.length === 0) {
-      elements.conversationsList.innerHTML = `
-        <div class="empty-list-notice">
-          ${filterText ? 'No matching conversations' : 'No chats yet. Start a new conversation!'}
-        </div>
-      `;
+      const p = pref(c.id);
+      const matches = `${chatName(c)} ${c.other_user?.username || ''}`.toLowerCase().includes(q.toLowerCase());
+      return matches && (activeFilter === 'archived' ? p.archived : !p.archived) &&
+        (activeFilter !== 'unread' || c.unread_count > 0) &&
+        (activeFilter !== 'groups' || c.type === 'GROUP') &&
+        (activeFilter !== 'favorites' || p.favorite);
+    }).sort((a,b) => Number(!!pref(b.id).pinned) - Number(!!pref(a.id).pinned));
+    document.getElementById('conversation-count').textContent = conversations.filter(c => !pref(c.id).archived).length;
+    const totalUnread = conversations.reduce((count,c) => count + (c.unread_count || 0), 0);
+    document.getElementById('unread-count').textContent = totalUnread || '';
+    document.title = `${totalUnread ? `(${totalUnread}) ` : ''}Relay — Messages`;
+    document.getElementById('btn-clear-conversation-search').classList.toggle('hidden', !q);
+    document.querySelector('.search-input-wrap kbd').classList.toggle('hidden', !!q);
+    const existing = new Map([...elements.conversationsList.querySelectorAll('.conversation-item')].map(item => [Number(item.dataset.id),item]));
+    if (!filtered.length) {
+      const copy = q ? ['No matching conversations', 'Try another name, or search all messages.'] : activeFilter === 'unread' ? ['You’re all caught up', 'New messages will appear here.'] : activeFilter === 'groups' ? ['Better conversations, together', 'Create a group for your favorite people.'] : activeFilter === 'favorites' ? ['Keep your people close', 'Add a conversation to favorites from its menu.'] : activeFilter === 'archived' ? ['A little breathing room', 'Archived conversations will appear here.'] : ['No conversations yet', 'Say hello. Good things start there.'];
+      elements.conversationsList.innerHTML = `<div class="list-empty"><span data-icon="${activeFilter === 'unread' ? 'check-check' : 'message'}"></span><h3>${copy[0]}</h3><p>${copy[1]}</p>${['all','groups'].includes(activeFilter) && !q ? '<button class="btn btn-secondary" id="btn-list-new-chat">Start a conversation</button>' : ''}${q ? '<button class="btn btn-secondary" id="btn-list-search-all">Search all messages</button>' : ''}</div>`;
+      document.getElementById('btn-list-new-chat')?.addEventListener('click', activeFilter === 'groups' ? setupNewGroupModal : setupNewChatModal);
+      document.getElementById('btn-list-search-all')?.addEventListener('click', () => setupSearchMessagesModal(null, q));
       return;
     }
-
-    filtered.forEach(conv => {
-      const item = document.createElement('div');
-      item.className = `conversation-item ${activeConversation && activeConversation.id === conv.id ? 'active' : ''}`;
+    elements.conversationsList.querySelector('.list-empty, [aria-label="Loading conversations"]')?.remove();
+    existing.forEach((item,id) => { if (!filtered.some(conv => conv.id === id)) item.remove(); });
+    filtered.forEach((conv,index) => {
+      const p = pref(conv.id); const name = chatName(conv); const isGroup = conv.type === 'GROUP';
+      const item = existing.get(conv.id) || document.createElement('div');
+      item.className = `conversation-item ${activeConversation?.id === conv.id ? 'active' : ''} ${conv.unread_count ? 'has-unread' : ''}`;
       item.dataset.id = conv.id;
-
-      const isGroup = conv.type === 'GROUP';
-      const name = conv.name || (conv.other_user && (conv.other_user.display_name || conv.other_user.username)) || 'Conversation';
-      const avatar = API.resolveUrl(conv.avatar_url) || `https://api.dicebear.com/7.x/initials/svg?seed=${name}`;
-      const isOnline = !isGroup && conv.other_user && conv.other_user.is_online;
-
-      const lastMsgText = conv.last_message 
-        ? (conv.last_message.is_deleted ? '🚫 Deleted message' : (conv.last_message.content || 'Attachment'))
-        : 'Start chatting';
-      const lastMsgTime = conv.last_message ? Utils.formatMessageTime(conv.last_message.created_at) : '';
-
-      item.innerHTML = `
-        <div class="conv-avatar-wrap">
-          <img src="${avatar}" alt="${Utils.escapeHTML(name)}" class="conv-avatar" />
-          ${!isGroup ? `<span class="online-dot ${isOnline ? 'online' : 'offline'}" id="status-dot-${conv.other_user ? conv.other_user.id : ''}"></span>` : '<span class="group-badge">👥</span>'}
-        </div>
-        <div class="conv-details">
-          <div class="conv-header">
-            <span class="conv-name">${Utils.escapeHTML(name)}</span>
-            <span class="conv-time">${lastMsgTime}</span>
-          </div>
-          <div class="conv-footer">
-            <span class="conv-snippet">${Utils.escapeHTML(lastMsgText)}</span>
-            ${conv.unread_count > 0 ? `<span class="unread-badge">${conv.unread_count}</span>` : ''}
-          </div>
-        </div>
-      `;
-
-      item.addEventListener('click', () => selectConversation(conv));
-      elements.conversationsList.appendChild(item);
+      const last = conv.last_message;
+      const snippet = last ? last.is_deleted ? 'Message deleted' : last.content || 'Sent an attachment' : 'Say hello to start the conversation';
+      const time = last ? Utils.formatDateHeader(last.created_at) === 'Today' ? Utils.formatMessageTime(last.created_at) : Utils.formatDateHeader(last.created_at) : '';
+      const html = `<button class="conversation-select" aria-label="${Utils.escapeHTML(name)}${conv.unread_count ? `, ${conv.unread_count} unread messages` : ''}" ${activeConversation?.id === conv.id ? 'aria-current="true"' : ''}>
+        <span class="conv-avatar-wrap"><img src="${Utils.escapeHTML(chatAvatar(conv))}" alt="" class="conv-avatar" loading="lazy" />${!isGroup && conv.other_user?.is_online ? '<span class="online-dot online" aria-label="Online"></span>' : isGroup ? '<span class="group-badge" data-icon="users"></span>' : ''}</span>
+        <span class="conv-details"><span class="conv-header"><span class="conv-name">${AppUI.highlight(name,q)}</span><span class="conv-time">${time}</span></span>
+        <span class="conv-footer"><span class="conv-snippet">${drafts[conv.id]?.text ? `<span class="draft-label">Draft:</span> ${Utils.escapeHTML(drafts[conv.id].text)}` : `${last?.sender_id === currentUser.id ? 'You: ' : ''}${Utils.escapeHTML(snippet)}`}</span><span class="conv-indicators">${p.pinned ? AppUI.icon('pin') : ''}${p.muted ? AppUI.icon('bell-off') : ''}${p.favorite ? AppUI.icon('star') : ''}${conv.unread_count > 0 ? `<span class="unread-badge">${conv.unread_count > 99 ? '99+' : conv.unread_count}</span>` : ''}</span></span></span>
+        </button><button class="conversation-menu icon-btn" title="Conversation options" aria-label="Options for ${Utils.escapeHTML(name)}" aria-haspopup="menu" aria-expanded="false">${AppUI.icon('more')}</button>`;
+      if (item.renderedHTML !== html) { item.innerHTML = html; item.renderedHTML = html; }
+      item.querySelector('.conversation-select').onclick = () => selectConversation(conv);
+      item.querySelector('.conversation-menu').onclick = e => openChatMenu(e.currentTarget, conv);
+      if (elements.conversationsList.children[index] !== item) elements.conversationsList.insertBefore(item,elements.conversationsList.children[index] || null);
     });
   };
 
-  // Select and open a conversation
-  const selectConversation = async (conv) => {
-    activeConversation = conv;
-    replyingToMessage = null;
-    editingMessage = null;
-    hideReplyPreview();
-    hideEditPreview();
-
-    // Mobile UI sidebar toggle
-    document.body.classList.add('mobile-chat-open');
-
-    // Update active highlight in sidebar
-    Utils.$$('.conversation-item').forEach(el => {
-      el.classList.toggle('active', parseInt(el.dataset.id) === conv.id);
-    });
-
-    // Update header
-    const isGroup = conv.type === 'GROUP';
-    const name = conv.name || (conv.other_user && (conv.other_user.display_name || conv.other_user.username)) || 'Chat';
-    const avatar = API.resolveUrl(conv.avatar_url) || `https://api.dicebear.com/7.x/initials/svg?seed=${name}`;
-
-    elements.emptyChatState.classList.add('hidden');
-    elements.activeChatWindow.classList.remove('hidden');
-
-    elements.chatAvatar.src = avatar;
-    elements.chatTitle.textContent = name;
-
-    if (isGroup) {
-      elements.chatSubtitle.textContent = `${conv.members.length} members`;
-      elements.chatHeaderStatus.className = 'status-text';
-      if (elements.btnVoiceCall) elements.btnVoiceCall.classList.add('hidden');
-      if (elements.btnVideoCall) elements.btnVideoCall.classList.add('hidden');
-    } else {
-      const isOnline = conv.other_user && conv.other_user.is_online;
-      const lastSeenText = conv.other_user ? Utils.formatLastSeen(isOnline, conv.other_user.last_seen) : 'Offline';
-      elements.chatSubtitle.textContent = lastSeenText;
-      elements.chatHeaderStatus.className = `status-text ${isOnline ? 'online-text' : ''}`;
-      if (elements.btnVoiceCall) elements.btnVoiceCall.classList.remove('hidden');
-      if (elements.btnVideoCall) elements.btnVideoCall.classList.remove('hidden');
+  const updateChatHeader = () => {
+    if (!activeConversation) return;
+    const conv = activeConversation; const isGroup = conv.type === 'GROUP';
+    elements.chatAvatar.src = chatAvatar(conv); elements.chatAvatar.alt = chatName(conv);
+    elements.chatTitle.textContent = chatName(conv);
+    elements.chatSubtitle.textContent = isGroup ? `${conv.members.length} members` : Utils.formatLastSeen(conv.other_user?.is_online, conv.other_user?.last_seen);
+    elements.chatHeaderStatus.className = `status-text ${!isGroup && conv.other_user?.is_online ? 'online-text' : ''}`;
+    elements.btnVoiceCall.classList.toggle('hidden',isGroup); elements.btnVideoCall.classList.toggle('hidden',isGroup);
+  };
+  const closeConversation = () => {
+    saveDraft(); stopTyping(); activeConversation = null; messages = []; messageRequest++;
+    document.body.classList.remove('mobile-chat-open');
+    elements.activeChatWindow.classList.add('hidden'); elements.emptyChatState.classList.remove('hidden');
+    Utils.closeModal('modal-group-info'); renderConversationsList();
+  };
+  const loadMessageHistory = async (conv, preserve = false) => {
+    const request = ++messageRequest;
+    if (!preserve) {
+      messages = []; elements.messagesList.innerHTML = '<div class="message-skeleton" aria-label="Loading messages"><span></span><span></span><span></span></div>';
     }
-
-    // Reset unread counter on this conversation
-    conv.unread_count = 0;
-    renderConversationsList(elements.convSearchInput ? elements.convSearchInput.value : '');
-
-    // Fetch message history
+    elements.messagesList.setAttribute('aria-busy','true');
     try {
-      messages = await API.get(`/messages/conversation/${conv.id}`);
-      renderMessages();
-      scrollToBottom();
-      // Send read receipt
-      WSClient.sendRead(conv.id);
-    } catch (err) {
-      Utils.showToast('Failed to load messages: ' + err.message, 'error');
-    }
+      const history = await API.get(`/messages/conversation/${conv.id}`, {limit: 50});
+      if (request !== messageRequest || activeConversation?.id !== conv.id) return;
+      const seen = new Map();
+      if (preserve) messages.forEach(m => seen.set(m.id,m));
+      history.forEach(m => seen.set(m.id,m));
+      messages.forEach(m => { if (!seen.has(m.id)) seen.set(m.id,m); });
+      outbox.forEach(m => { if (m.conversation_id === conv.id) seen.set(m.id,m); });
+      messages = [...seen.values()].sort((a,b) => Utils.parseDate(a.created_at) - Utils.parseDate(b.created_at));
+      hasEarlier = preserve ? hasEarlier || history.length === 50 : history.length === 50;
+      document.getElementById('btn-load-earlier').classList.toggle('hidden', !hasEarlier);
+      renderMessages(); scrollToBottom(); await markRead(conv);
+      if (elements.modalGroupInfo.classList.contains('active')) renderSharedContent();
+    } catch {
+      if (request !== messageRequest || activeConversation?.id !== conv.id) return;
+      if (!preserve) {
+        elements.messagesList.innerHTML = '<div class="list-empty"><span data-icon="alert-circle"></span><h3>Messages couldn’t load</h3><p>Check your connection and try again.</p><button id="btn-retry-history" class="btn btn-secondary">Try again</button></div>';
+        document.getElementById('btn-retry-history').onclick = () => loadMessageHistory(conv);
+      } else Utils.showToast('Recent messages couldn’t sync. Try again when connected.', 'error');
+    } finally { if (request === messageRequest) elements.messagesList.setAttribute('aria-busy','false'); }
+  };
+  const loadEarlierMessages = async () => {
+    if (!activeConversation || !hasEarlier || loadingEarlier) return;
+    const convId = activeConversation.id; const button = document.getElementById('btn-load-earlier');
+    const first = messages.find(m => typeof m.id === 'number'); if (!first) return;
+    loadingEarlier = true; button.disabled = true; button.textContent = 'Loading…';
+    try {
+      const earlier = await API.get(`/messages/conversation/${convId}`, {limit:50, before_id:first.id});
+      if (activeConversation?.id !== convId) return;
+      const height = elements.messagesContainer.scrollHeight, top = elements.messagesContainer.scrollTop;
+      const ids = new Set(messages.map(m => m.id)); messages = [...earlier.filter(m => !ids.has(m.id)), ...messages];
+      hasEarlier = earlier.length === 50; renderMessages(); button.classList.toggle('hidden', !hasEarlier);
+      elements.messagesContainer.scrollTop = top + elements.messagesContainer.scrollHeight - height;
+    } catch { Utils.showToast('Earlier messages couldn’t load. Please try again.', 'error'); }
+    finally { loadingEarlier = false; button.disabled = false; button.textContent = 'Load earlier messages'; }
+  };
+  const selectConversation = async conv => {
+    document.getElementById('history-context').classList.add('hidden');
+    AppUI.closeMenu(); saveDraft(); stopTyping(); hideTypingIndicator();
+    activeConversation = conv; replyingToMessage = null; editingMessage = null;
+    hideReplyPreview(); hideEditPreview();
+    pendingAttachments = drafts[conv.id]?.attachments || [];
+    elements.messageInput.value = drafts[conv.id]?.text || ''; renderAttachmentPreviews(); syncComposer();
+    document.body.classList.add('mobile-chat-open');
+    elements.emptyChatState.classList.add('hidden'); elements.activeChatWindow.classList.remove('hidden');
+    updateChatHeader(); renderConversationsList();
+    if (elements.modalGroupInfo.classList.contains('active')) setupChatInfoModal();
+    await loadMessageHistory(conv);
   };
 
-  // Render message history
+  // Append live messages without replacing existing focused bubbles or loaded images.
+  const appendMessage = msg => {
+    elements.messagesList.querySelector('.conversation-start, .message-skeleton, .list-empty')?.remove();
+    const date = Utils.formatDateHeader(msg.created_at);
+    const separators = elements.messagesList.querySelectorAll('.message-date-separator');
+    if (separators[separators.length - 1]?.textContent !== date) {
+      const separator = document.createElement('div'); separator.className = 'message-date-separator';
+      const label = document.createElement('span'); label.textContent = date; separator.append(label);
+      elements.messagesList.append(separator);
+    }
+    elements.messagesList.append(createMessageElement(msg));
+  };
   const renderMessages = () => {
-    if (!elements.messagesList) return;
-    elements.messagesList.innerHTML = '';
-
-    let lastDateStr = null;
-
-    messages.forEach(msg => {
-      const msgDateStr = Utils.formatDateHeader(msg.created_at);
-      if (msgDateStr !== lastDateStr) {
-        const dateHeader = document.createElement('div');
-        dateHeader.className = 'message-date-separator';
-        dateHeader.innerHTML = `<span>${msgDateStr}</span>`;
-        elements.messagesList.appendChild(dateHeader);
-        lastDateStr = msgDateStr;
-      }
-
-      const bubble = createMessageElement(msg);
-      elements.messagesList.appendChild(bubble);
-    });
+    elements.messagesList.replaceChildren();
+    if (!messages.length) {
+      elements.messagesList.innerHTML = '<div class="conversation-start"><span data-icon="message"></span><h3>This is the start of your conversation</h3><p>A simple hello goes a long way.</p></div>';
+      return;
+    }
+    messages.forEach(appendMessage);
   };
 
   // Create single message DOM element
   const createMessageElement = (msg) => {
     const isOwn = msg.sender_id === currentUser.id;
     const isDeleted = msg.is_deleted;
+    const isLocal = typeof msg.id !== 'number';
     const bubble = document.createElement('div');
     bubble.className = `message-row ${isOwn ? 'message-own' : 'message-other'}`;
     bubble.id = `msg-${msg.id}`;
 
     const senderName = msg.sender ? (msg.sender.display_name || msg.sender.username) : 'User';
-    const avatar = API.resolveUrl(msg.sender ? msg.sender.avatar_url : null) || `https://api.dicebear.com/7.x/initials/svg?seed=${senderName}`;
+    const avatar = AppUI.avatarUrl(msg.sender?.avatar_url,senderName);
     const timeStr = Utils.formatMessageTime(msg.created_at);
 
     // Group message sender avatar
@@ -313,10 +408,10 @@ document.addEventListener('DOMContentLoaded', () => {
     let replyHtml = '';
     if (msg.reply_to) {
       replyHtml = `
-        <div class="message-reply-quote" onclick="document.getElementById('msg-${msg.reply_to.id}')?.scrollIntoView({ behavior: 'smooth', block: 'center' })">
+        <button type="button" class="message-reply-quote" aria-label="Go to replied message">
           <div class="reply-sender">${Utils.escapeHTML(msg.reply_to.sender_name || 'User')}</div>
           <div class="reply-text">${Utils.escapeHTML(msg.reply_to.content)}</div>
-        </div>
+        </button>
       `;
     }
 
@@ -328,19 +423,19 @@ document.addEventListener('DOMContentLoaded', () => {
         const fileUrl = API.resolveUrl(att.file_url);
         if (att.file_type.startsWith('image/')) {
           attachmentsHtml += `
-            <a href="${fileUrl}" target="_blank" rel="noopener noreferrer" class="attachment-image-link">
-              <img src="${fileUrl}" alt="${Utils.escapeHTML(att.file_name)}" class="attachment-image" loading="lazy" />
+            <a href="${Utils.escapeHTML(fileUrl)}" target="_blank" rel="noopener noreferrer" class="attachment-image-link">
+              <img src="${Utils.escapeHTML(fileUrl)}" alt="${Utils.escapeHTML(att.file_name)}" class="attachment-image" loading="lazy" />
             </a>
           `;
         } else {
           attachmentsHtml += `
-            <a href="${fileUrl}" target="_blank" download="${Utils.escapeHTML(att.file_name)}" class="attachment-file-card">
-              <span class="file-icon">📄</span>
+            <a href="${Utils.escapeHTML(fileUrl)}" target="_blank" rel="noopener noreferrer" download="${Utils.escapeHTML(att.file_name)}" class="attachment-file-card">
+              <span class="file-icon">${AppUI.icon('file')}</span>
               <div class="file-info">
                 <span class="file-name">${Utils.escapeHTML(att.file_name)}</span>
                 <span class="file-size">${Utils.formatFileSize(att.file_size)}</span>
               </div>
-              <span class="download-icon">⬇</span>
+              <span class="download-icon">${AppUI.icon('download')}</span>
             </a>
           `;
         }
@@ -361,8 +456,8 @@ document.addEventListener('DOMContentLoaded', () => {
       Object.keys(counts).forEach(emoji => {
         const hasReacted = msg.reactions.some(r => r.emoji === emoji && r.user_id === currentUser.id);
         reactionsHtml += `
-          <button class="reaction-chip ${hasReacted ? 'active' : ''}" data-emoji="${emoji}">
-            <span>${emoji}</span> <span class="rxn-count">${counts[emoji]}</span>
+          <button class="reaction-chip ${hasReacted ? 'active' : ''}" data-emoji="${Utils.escapeHTML(emoji)}">
+            <span>${Utils.escapeHTML(emoji)}</span> <span class="rxn-count">${counts[emoji]}</span>
           </button>
         `;
       });
@@ -373,14 +468,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const receiptHtml = isOwn ? Utils.renderReceiptTicks(msg.status) : '';
 
     bubble.innerHTML = `
-      ${showAvatar ? `<img src="${avatar}" alt="${Utils.escapeHTML(senderName)}" class="message-sender-avatar" title="${Utils.escapeHTML(senderName)}" />` : ''}
+      ${showAvatar ? `<img src="${Utils.escapeHTML(avatar)}" alt="${Utils.escapeHTML(senderName)}" class="message-sender-avatar" title="${Utils.escapeHTML(senderName)}" />` : ''}
       <div class="message-bubble ${isDeleted ? 'deleted-bubble' : ''}">
         ${showAvatar ? `<div class="message-sender-name">${Utils.escapeHTML(senderName)}</div>` : ''}
         ${replyHtml}
         ${attachmentsHtml}
-        <div class="message-text">
-          ${isDeleted ? '<i>🚫 This message was deleted</i>' : Utils.escapeHTML(msg.content)}
-        </div>
+        <div class="message-text">${isDeleted ? '<i>This message was deleted</i>' : AppUI.linkify(msg.content)}</div>
         <div class="message-meta">
           ${msg.is_edited && !isDeleted ? '<span class="edited-label">(edited)</span>' : ''}
           <span class="message-time">${timeStr}</span>
@@ -388,24 +481,49 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
         ${reactionsHtml}
 
-        ${!isDeleted ? `
-          <div class="message-actions-hover">
-            <button class="action-icon-btn btn-quick-react" title="React">😀</button>
-            <button class="action-icon-btn btn-reply" title="Reply">↩</button>
-            ${isOwn ? '<button class="action-icon-btn btn-edit" title="Edit">✏️</button>' : ''}
-            ${isOwn || (activeConversation && activeConversation.type === 'GROUP' && isGroupAdmin(activeConversation)) ? '<button class="action-icon-btn btn-delete" title="Delete">🗑️</button>' : ''}
-          </div>
-        ` : ''}
+        ${msg.status === 'FAILED' ? '<div class="message-failure"><span>Message couldn’t be sent</span><button class="text-button btn-retry-message">Retry</button></div>' : ''}
+        ${!isDeleted && !isLocal ? `
+          <div class="message-actions-hover" aria-label="Message actions">
+            <button class="action-icon-btn btn-quick-react" title="React" aria-label="React">${AppUI.icon('smile')}</button>
+            <button class="action-icon-btn btn-reply" title="Reply" aria-label="Reply">${AppUI.icon('reply')}</button>
+            <button class="action-icon-btn btn-copy" title="Copy message" aria-label="Copy message">${AppUI.icon('copy')}</button>
+            <button class="action-icon-btn btn-forward" title="Forward" aria-label="Forward">${AppUI.icon('forward')}</button>
+            ${isOwn ? `<button class="action-icon-btn btn-edit" title="Edit" aria-label="Edit">${AppUI.icon('edit')}</button>` : ''}
+            ${isOwn || (activeConversation?.type === 'GROUP' && isGroupAdmin(activeConversation)) ? `<button class="action-icon-btn btn-delete" title="Delete" aria-label="Delete">${AppUI.icon('trash')}</button>` : ''}
+          </div>` : ''}
       </div>
     `;
 
+    bubble.querySelector('.message-reply-quote')?.addEventListener('click', () => {
+      const target = document.getElementById(`msg-${msg.reply_to.id}`);
+      if (target) target.scrollIntoView({behavior:'smooth',block:'center'});
+      else Utils.showToast('Load earlier messages to see the original reply.', 'info');
+    });
+    bubble.querySelectorAll('.attachment-image-link').forEach(link => link.onclick = e => {
+      e.preventDefault(); const image = link.querySelector('img');
+      document.getElementById('attachment-preview-image').src = image.src; document.getElementById('attachment-preview-image').alt = image.alt;
+      document.getElementById('attachment-preview-download').href = link.href; document.getElementById('attachment-preview-title').textContent = image.alt;
+      Utils.openModal('modal-attachment-preview');
+    });
+    bubble.querySelector('.message-bubble').tabIndex = 0;
+    bubble.querySelector('.message-bubble').setAttribute('aria-label', `${isOwn ? 'You' : senderName}, ${isDeleted ? 'Message deleted' : msg.content || 'Attachment'}, ${timeStr}`);
+    bubble.querySelector('.btn-retry-message')?.addEventListener('click', () => dispatchMessage(msg));
+    bubble.querySelector('.btn-copy')?.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(msg.content); Utils.showToast('Copied to clipboard', 'success'); }
+      catch { Utils.showToast('Copy is unavailable in this browser.', 'error'); }
+    });
+    bubble.querySelector('.btn-forward')?.addEventListener('click', () => setupForwardModal(msg));
+    bubble.querySelector('.message-bubble').addEventListener('contextmenu', e => { e.preventDefault(); bubble.classList.toggle('actions-visible'); });
+    let longPress;
+    bubble.addEventListener('pointerdown', e => { if (e.pointerType === 'touch') longPress = setTimeout(() => bubble.classList.add('actions-visible'), 500); });
+    ['pointerup','pointercancel','pointermove'].forEach(event => bubble.addEventListener(event, () => clearTimeout(longPress)));
     // Event handlers on message actions
     if (!isDeleted) {
       const btnReact = bubble.querySelector('.btn-quick-react');
       if (btnReact) {
         btnReact.addEventListener('click', (e) => {
           e.stopPropagation();
-          showReactionMenu(msg.id, e.target);
+          showReactionMenu(msg.id, e.currentTarget);
         });
       }
 
@@ -443,8 +561,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Reply handlers
   const setReplyTo = (msg) => {
-    replyingToMessage = msg;
     hideEditPreview();
+    replyingToMessage = msg;
     const sender = msg.sender ? (msg.sender.display_name || msg.sender.username) : 'User';
     elements.replyAuthor.textContent = sender;
     elements.replyContent.textContent = msg.content || 'Attachment';
@@ -459,25 +577,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Edit handlers
   const setEditing = (msg) => {
+    saveDraft();
     editingMessage = msg;
     hideReplyPreview();
     elements.editContent.textContent = msg.content;
     elements.editPreviewBar.classList.remove('hidden');
     elements.messageInput.value = msg.content;
     elements.messageInput.focus();
+    syncComposer();
   };
 
   const hideEditPreview = () => {
+    const wasEditing = !!editingMessage;
     editingMessage = null;
     elements.editPreviewBar.classList.add('hidden');
-    elements.messageInput.value = '';
+    if (wasEditing) elements.messageInput.value = drafts[activeConversation?.id]?.text || '';
+    syncComposer();
   };
 
   // Delete message
   const confirmDeleteMessage = async (msgId) => {
-    if (!confirm('Are you sure you want to delete this message?')) return;
+    if (!await AppUI.confirm({title:'Delete this message?', description:'This message will be removed for everyone in this conversation.', action:'Delete message'})) return;
     try {
-      await API.delete(`/messages/${msgId}`);
+      const deleted = await API.delete(`/messages/${msgId}`);
+      handleMessageEdited(deleted);
       Utils.showToast('Message deleted', 'info');
     } catch (err) {
       Utils.showToast(err.message, 'error');
@@ -487,7 +610,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Toggle reaction
   const toggleReaction = async (msgId, emoji) => {
     try {
-      await API.post(`/messages/${msgId}/reaction`, { emoji });
+      const updated = await API.post(`/messages/${msgId}/reaction`, { emoji });
+      handleMessageEdited(updated);
     } catch (err) {
       Utils.showToast(err.message, 'error');
     }
@@ -516,8 +640,11 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.appendChild(popup);
 
     const rect = triggerElement.getBoundingClientRect();
-    popup.style.top = `${rect.top - 46}px`;
-    popup.style.left = `${rect.left - 30}px`;
+    const box = popup.getBoundingClientRect();
+    popup.style.top = `${Math.max(8, rect.top - box.height - 8)}px`;
+    popup.style.left = `${Math.max(8, Math.min(rect.left - 30, innerWidth - box.width - 8))}px`;
+    popup.setAttribute('role','group'); popup.setAttribute('aria-label','Choose a reaction');
+    popup.querySelector('button')?.focus();
 
     // Close on click outside
     const closeListener = (e) => {
@@ -529,55 +656,72 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => document.addEventListener('click', closeListener), 50);
   };
 
-  // Send message action
-  const sendMessage = async () => {
-    if (!activeConversation) return;
-
-    const content = elements.messageInput.value.trim();
-    if (!content && pendingAttachments.length === 0) return;
-
-    // If editing existing message
-    if (editingMessage) {
-      try {
-        await API.put(`/messages/${editingMessage.id}`, { content });
-        hideEditPreview();
-      } catch (err) {
-        Utils.showToast(err.message, 'error');
+  // REST returns a reliable acknowledgement; the same backend broadcasts existing socket events.
+  const dispatchMessage = async entry => {
+    if (entry.status === 'SENDING' && entry.requesting) return;
+    entry.status = 'SENDING'; entry.requesting = true; saveOutbox();
+    document.getElementById(`msg-${entry.id}`)?.replaceWith(createMessageElement(entry));
+    try {
+      const result = await API.post('/messages', entry.payload);
+      outbox.delete(entry.id); saveOutbox();
+      if (activeConversation?.id === entry.conversation_id) {
+        messages = messages.filter(m => m.id !== entry.id);
+        document.getElementById(`msg-${entry.id}`)?.remove();
       }
+      handleIncomingMessage(result);
+    } catch {
+      entry.status = 'FAILED';
+      document.getElementById(`msg-${entry.id}`)?.replaceWith(createMessageElement(entry));
+      Utils.showToast('Message couldn’t be sent. Use Retry to send it again.', 'error');
+    } finally { entry.requesting = false; saveOutbox(); }
+  };
+  const queueMessage = payload => {
+    const entry = {...payload, payload, id: `local-${crypto.randomUUID()}`, sender_id: currentUser.id, sender: currentUser, created_at: new Date().toISOString(), status:'SENDING', reactions:[], attachments:payload.attachments || []};
+    outbox.set(entry.id,entry); saveOutbox();
+    if (activeConversation?.id === payload.conversation_id) {
+      if (viewingSearchHistory()) { document.getElementById('history-context').classList.add('hidden'); loadMessageHistory(activeConversation); }
+      messages.push(entry); appendMessage(entry); scrollToBottom(true);
+    }
+    return dispatchMessage(entry);
+  };
+  const sendMessage = async () => {
+    if (!activeConversation || uploading) return;
+    const content = elements.messageInput.value.trim();
+    if (!content && !pendingAttachments.length) return;
+    if (content.length > 10000) { Utils.showToast('Please keep messages under 10,000 characters.', 'warning'); return; }
+    if (editingMessage) {
+      const editingId = editingMessage.id; const convId = activeConversation.id;
+      elements.btnSendMessage.disabled = true;
+      try {
+        const result = await API.put(`/messages/${editingId}`, {content}); handleMessageEdited(result);
+        if (activeConversation?.id === convId && editingMessage?.id === editingId) { hideEditPreview(); saveDraft(); }
+      } catch { Utils.showToast('Your edit couldn’t be saved. Please try again.', 'error'); }
+      finally { syncComposer(); }
       return;
     }
-
     const payload = {
-      conversation_id: activeConversation.id,
-      content: content || 'Attachment',
-      message_type: pendingAttachments.length > 0 ? (pendingAttachments[0].file_type.startsWith('image/') ? 'IMAGE' : 'FILE') : 'TEXT',
-      reply_to_id: replyingToMessage ? replyingToMessage.id : null,
-      attachments: pendingAttachments.map(a => ({
-        file_url: a.file_url,
-        file_name: a.file_name,
-        file_type: a.file_type,
-        file_size: a.file_size,
-        public_id: a.public_id
-      }))
+      conversation_id: activeConversation.id, content: content || '',
+      message_type: pendingAttachments.length ? pendingAttachments[0].file_type.startsWith('image/') ? 'IMAGE' : 'FILE' : 'TEXT',
+      reply_to_id: replyingToMessage?.id || null,
+      attachments: pendingAttachments.map(({file_url,file_name,file_type,file_size,public_id}) => ({file_url,file_name,file_type,file_size,public_id}))
     };
-
-    // Clear inputs immediately for responsiveness
-    elements.messageInput.value = '';
-    elements.messageInput.style.height = 'auto';
-    pendingAttachments = [];
-    renderAttachmentPreviews();
-    hideReplyPreview();
-    stopTyping();
-
-    // Send via WebSocket or fallback REST API
-    const sentViaWs = WSClient.send(CONFIG.EVENTS.MESSAGE, payload);
-    if (!sentViaWs) {
-      try {
-        await API.post('/messages', payload);
-      } catch (err) {
-        Utils.showToast('Failed to send message: ' + err.message, 'error');
-      }
-    }
+    elements.messageInput.value = ''; pendingAttachments = []; renderAttachmentPreviews(); hideReplyPreview(); stopTyping(); saveDraft(); syncComposer(); renderConversationsList();
+    await queueMessage(payload);
+  };
+  const setupForwardModal = msg => {
+    Utils.openModal('modal-forward');
+    const list = document.getElementById('forward-conversations'); list.innerHTML = '';
+    if (!conversations.length) { list.innerHTML = '<p class="empty-list-notice">Start a conversation first.</p>'; return; }
+    conversations.forEach(conv => {
+      const button = document.createElement('button'); button.className = 'forward-target';
+      button.innerHTML = `<img src="${Utils.escapeHTML(chatAvatar(conv))}" alt="" /><span>${Utils.escapeHTML(chatName(conv))}</span>${AppUI.icon('forward')}`;
+      button.onclick = () => {
+        Utils.closeModal('modal-forward');
+        queueMessage({conversation_id:conv.id, content:msg.content, message_type:msg.message_type, attachments:msg.attachments.map(({file_url,file_name,file_type,file_size,public_id}) => ({file_url,file_name,file_type,file_size,public_id}))});
+        selectConversation(conv);
+      };
+      list.append(button);
+    });
   };
 
   // Scroll messages container to bottom
@@ -620,48 +764,37 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.typingIndicator.classList.add('hidden');
   };
 
-  // Real-time Event Handlers
-  const handleIncomingMessage = (msg) => {
-    // If message is in currently active conversation
-    if (activeConversation && activeConversation.id === msg.conversation_id) {
+  // Deduplicate REST acknowledgements and socket echoes; preserve the reader’s scroll position.
+  const handleIncomingMessage = msg => {
+    const exists = messages.find(m => m.id === msg.id);
+    if (activeConversation?.id === msg.conversation_id && !exists && !viewingSearchHistory()) {
+      const nearBottom = elements.messagesContainer.scrollHeight - elements.messagesContainer.scrollTop - elements.messagesContainer.clientHeight < 160;
       messages.push(msg);
-      const bubble = createMessageElement(msg);
-      elements.messagesList.appendChild(bubble);
-      scrollToBottom(true);
-      // Mark read
-      if (msg.sender_id !== currentUser.id) {
-        WSClient.sendRead(activeConversation.id);
-      }
-    } else {
-      // Incoming message for another conversation -> notify!
-      const conv = conversations.find(c => c.id === msg.conversation_id);
-      const convName = conv ? conv.name || (conv.other_user && (conv.other_user.display_name || conv.other_user.username)) : null;
-      if (msg.sender_id !== currentUser.id) {
-        Notifications.notifyNewMessage(msg, convName, () => {
-          if (conv) selectConversation(conv);
-        });
-      }
+      appendMessage(msg);
+      if (msg.sender_id === currentUser.id || nearBottom) scrollToBottom(true);
+      else document.getElementById('btn-jump-latest').classList.remove('hidden');
+      if (msg.sender_id !== currentUser.id) markRead(activeConversation);
+      if (elements.modalGroupInfo.classList.contains('active')) renderSharedContent();
     }
-
-    // Update conversation item snippet and unread counter in sidebar
-    const convIndex = conversations.findIndex(c => c.id === msg.conversation_id);
-    if (convIndex !== -1) {
-      const conv = conversations[convIndex];
-      conv.last_message = msg;
-      if (!activeConversation || activeConversation.id !== conv.id) {
-        conv.unread_count = (conv.unread_count || 0) + 1;
+    if (activeConversation?.id === msg.conversation_id && viewingSearchHistory()) document.getElementById('btn-jump-latest').classList.remove('hidden');
+    const index = conversations.findIndex(c => c.id === msg.conversation_id);
+    const conv = conversations[index];
+    if (conv) {
+      if (conv.last_message?.id !== msg.id) {
+        conv.last_message = msg;
+        if (!visibleChat(conv.id) && msg.sender_id !== currentUser.id) {
+          conv.unread_count = (conv.unread_count || 0) + 1;
+          if (!pref(conv.id).muted) Notifications.notifyNewMessage(msg, chatName(conv), () => selectConversation(conv));
+        }
+        conversations.splice(index,1); conversations.unshift(conv);
       }
-      // Bump conversation to top of list
-      conversations.splice(convIndex, 1);
-      conversations.unshift(conv);
-      renderConversationsList(elements.convSearchInput ? elements.convSearchInput.value : '');
-    } else {
-      // New conversation created, refresh
-      loadConversations();
-    }
+      renderConversationsList();
+    } else loadConversations();
   };
 
   const handleMessageEdited = (msg) => {
+    const conv = conversations.find(c => c.last_message?.id === msg.id);
+    if (conv) { conv.last_message = msg; renderConversationsList(); }
     const idx = messages.findIndex(m => m.id === msg.id);
     if (idx !== -1) {
       messages[idx] = msg;
@@ -671,9 +804,12 @@ document.addEventListener('DOMContentLoaded', () => {
       const newEl = createMessageElement(msg);
       el.replaceWith(newEl);
     }
+    if (elements.modalGroupInfo.classList.contains('active')) renderSharedContent();
   };
 
   const handleMessageDeleted = (data) => {
+    const conv = conversations.find(c => c.last_message?.id === data.id);
+    if (conv) { conv.last_message = {...conv.last_message,is_deleted:true,content:'This message was deleted',attachments:[]}; renderConversationsList(); }
     const idx = messages.findIndex(m => m.id === data.id);
     if (idx !== -1) {
       messages[idx].is_deleted = true;
@@ -681,10 +817,11 @@ document.addEventListener('DOMContentLoaded', () => {
       messages[idx].attachments = [];
     }
     const el = document.getElementById(`msg-${data.id}`);
-    if (el) {
+    if (el && idx !== -1) {
       const newEl = createMessageElement(messages[idx]);
       el.replaceWith(newEl);
     }
+    if (elements.modalGroupInfo.classList.contains('active')) renderSharedContent();
   };
 
   const handleReactionUpdate = (data) => {
@@ -699,59 +836,41 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  const handleReadReceipt = (data) => {
-    if (activeConversation && activeConversation.id === data.conversation_id) {
-      // Update ticks on sent messages to Read
-      messages.forEach(m => {
-        if (m.sender_id === currentUser.id) {
-          m.status = 'READ';
-        }
-      });
-      Utils.$$('.status-ticks', elements.messagesList).forEach(el => {
-        el.className = 'status-ticks ticks-read';
-        el.textContent = '✓✓';
-        el.title = 'Read';
-      });
-    }
+  const handleReadReceipt = data => {
+    if (activeConversation?.id !== data.conversation_id || data.user_id === currentUser.id) return;
+    messages.forEach(m => {
+      if (m.sender_id !== currentUser.id || !data.message_ids?.includes(m.id)) return;
+      m.read_by = [...new Set([...(m.read_by || []), data.user_id])];
+      m.status = 'READ'; document.getElementById(`msg-${m.id}`)?.replaceWith(createMessageElement(m));
+    });
   };
-
   const updateUserPresence = (userId, isOnline, lastSeen) => {
-    // Update sidebar dot
-    const dot = document.getElementById(`status-dot-${userId}`);
-    if (dot) {
-      dot.className = `online-dot ${isOnline ? 'online' : 'offline'}`;
-    }
-
-    // Update active chat header if current 1-on-1 contact
-    if (activeConversation && activeConversation.type === 'DIRECT' && activeConversation.other_user && activeConversation.other_user.id === userId) {
-      activeConversation.other_user.is_online = isOnline;
-      if (lastSeen) activeConversation.other_user.last_seen = lastSeen;
-      const text = Utils.formatLastSeen(isOnline, activeConversation.other_user.last_seen);
-      elements.chatSubtitle.textContent = text;
-      elements.chatHeaderStatus.className = `status-text ${isOnline ? 'online-text' : ''}`;
-    }
+    conversations.forEach(conv => {
+      if (conv.other_user?.id === userId) { conv.other_user.is_online = isOnline; if (lastSeen) conv.other_user.last_seen = lastSeen; }
+    });
+    if (activeConversation?.other_user?.id === userId) { activeConversation.other_user.is_online = isOnline; if (lastSeen) activeConversation.other_user.last_seen = lastSeen; updateChatHeader(); }
+    renderConversationsList();
   };
 
   // Attachment handling
-  const handleFileUpload = async (file) => {
-    if (!file) return;
-
-    if (file.size > CONFIG.MAX_FILE_SIZE_MB * 1024 * 1024) {
-      Utils.showToast(`File exceeds ${CONFIG.MAX_FILE_SIZE_MB}MB limit`, 'error');
-      return;
-    }
-
-    Utils.showToast(`Uploading ${file.name}...`, 'info');
+  const handleFileUpload = async file => {
+    if (!file || !activeConversation) return;
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!CONFIG.ALLOWED_EXTENSIONS.includes(ext)) { Utils.showToast('This file type isn’t supported.', 'error'); return; }
+    if (file.size > CONFIG.MAX_FILE_SIZE_MB * 1024 * 1024) { Utils.showToast(`Choose a file smaller than ${CONFIG.MAX_FILE_SIZE_MB} MB.`, 'error'); return; }
+    const convId = activeConversation.id;
+    uploading++; syncComposer(); document.getElementById('upload-status').classList.remove('hidden');
     try {
       const uploaded = await API.uploadFile(file);
-      pendingAttachments.push(uploaded);
-      renderAttachmentPreviews();
-    } catch (err) {
-      Utils.showToast('Upload failed: ' + err.message, 'error');
-    }
+      if (activeConversation?.id === convId) { pendingAttachments.push(uploaded); renderAttachmentPreviews(); saveDraft(); }
+      else { drafts[convId] ||= {text:'',attachments:[]}; drafts[convId].attachments.push(uploaded); AppUI.write(draftKey,drafts); }
+      Utils.showToast('File ready to send', 'success');
+    } catch { Utils.showToast('File couldn’t be uploaded. Please try again.', 'error'); }
+    finally { uploading--; syncComposer(); document.getElementById('upload-status').classList.toggle('hidden', !uploading); }
   };
 
   const renderAttachmentPreviews = () => {
+    syncComposer();
     if (pendingAttachments.length === 0) {
       elements.attachmentPreviewBar.classList.add('hidden');
       elements.attachmentPreviews.innerHTML = '';
@@ -766,11 +885,11 @@ document.addEventListener('DOMContentLoaded', () => {
       item.className = 'attachment-chip';
       item.innerHTML = `
         <span class="chip-name">${Utils.escapeHTML(att.file_name)}</span>
-        <button class="chip-remove" data-index="${index}">✕</button>
+        <button class="chip-remove icon-btn" data-index="${index}" aria-label="Remove ${Utils.escapeHTML(att.file_name)}">${AppUI.icon('x')}</button>
       `;
       item.querySelector('.chip-remove').addEventListener('click', () => {
         pendingAttachments.splice(index, 1);
-        renderAttachmentPreviews();
+        renderAttachmentPreviews(); saveDraft();
       });
       elements.attachmentPreviews.appendChild(item);
     });
@@ -778,19 +897,47 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Event Listeners for UI
   const bindUIEvents = () => {
+    document.getElementById('btn-empty-new-chat').onclick = setupNewChatModal;
+    document.getElementById('btn-details').onclick = () => elements.modalGroupInfo.classList.contains('active') ? Utils.closeModal('modal-group-info') : setupChatInfoModal();
+    document.getElementById('btn-chat-options').onclick = e => { if (activeConversation) openChatMenu(e.currentTarget,activeConversation); };
+    document.getElementById('btn-global-search').onclick = () => setupSearchMessagesModal();
+    document.getElementById('btn-clear-conversation-search').onclick = () => { elements.convSearchInput.value = ''; renderConversationsList(); elements.convSearchInput.focus(); };
+    document.getElementById('btn-load-earlier').onclick = loadEarlierMessages;
+    document.getElementById('btn-jump-latest').onclick = () => { if (viewingSearchHistory()) { document.getElementById('history-context').classList.add('hidden'); loadMessageHistory(activeConversation); } else scrollToBottom(true); document.getElementById('btn-jump-latest').classList.add('hidden'); };
+    elements.messagesContainer.addEventListener('scroll', () => {
+      if (elements.messagesContainer.scrollHeight - elements.messagesContainer.scrollTop - elements.messagesContainer.clientHeight < 100) document.getElementById('btn-jump-latest').classList.add('hidden');
+    }, {passive:true});
+    document.querySelectorAll('[data-filter]').forEach(button => button.onclick = () => {
+      activeFilter = button.dataset.filter;
+      document.querySelectorAll('[data-filter]').forEach(b => { b.classList.toggle('active',b === button); b.setAttribute('aria-pressed',String(b === button)); });
+      renderConversationsList();
+    });
+    document.getElementById('nav-stories').onclick = async () => {
+      const tray = document.getElementById('stories-tray-container'); const show = tray.classList.contains('hidden');
+      tray.classList.toggle('hidden',!show); document.getElementById('nav-stories').classList.toggle('active',show);
+      document.getElementById('nav-stories').setAttribute('aria-pressed',String(show));
+      if (show) await Stories.loadStories();
+    };
+    document.getElementById('nav-messages').onclick = () => { if (innerWidth <= 768) document.body.classList.remove('mobile-chat-open'); elements.convSearchInput.focus(); };
+    document.addEventListener('visibilitychange', () => { if (activeConversation && document.visibilityState === 'visible') markRead(activeConversation); });
+    window.addEventListener('beforeunload',saveDraft);
+    document.addEventListener('keydown', e => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setupSearchMessagesModal(); }
+      if (e.key === 'Escape') { elements.emojiPickerPopup.classList.add('hidden'); document.querySelectorAll('.actions-visible').forEach(el => el.classList.remove('actions-visible')); document.querySelector('.quick-reaction-popup')?.remove(); }
+    });
     // Send button click
     elements.btnSendMessage.addEventListener('click', sendMessage);
 
     // Message input enter key
     elements.messageInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
         e.preventDefault();
         sendMessage();
       }
     });
 
     // Keystroke for typing indicator
-    elements.messageInput.addEventListener('input', handleKeystroke);
+    elements.messageInput.addEventListener('input', () => { handleKeystroke(); syncComposer(); saveDraft(); });
 
     // Cancel reply / edit
     elements.btnCancelReply.addEventListener('click', hideReplyPreview);
@@ -800,7 +947,7 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.btnAttachment.addEventListener('click', () => elements.fileInput.click());
     elements.fileInput.addEventListener('change', (e) => {
       if (e.target.files && e.target.files[0]) {
-        handleFileUpload(e.target.files[0]);
+        [...e.target.files].forEach(handleFileUpload);
         e.target.value = '';
       }
     });
@@ -817,7 +964,7 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.messageInput.value += btn.textContent;
         elements.messageInput.focus();
         elements.emojiPickerPopup.classList.add('hidden');
-        handleKeystroke();
+        handleKeystroke(); syncComposer(); saveDraft();
       });
     });
 
@@ -829,17 +976,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Mobile back button
     elements.btnMobileBack.addEventListener('click', () => {
+      saveDraft(); stopTyping(); Utils.closeModal('modal-group-info');
       document.body.classList.remove('mobile-chat-open');
+      renderConversationsList();
     });
 
     // Live search in conversations sidebar
-    elements.convSearchInput.addEventListener('input', Utils.debounce((e) => {
-      renderConversationsList(e.target.value);
-    }, 200));
+    elements.convSearchInput.addEventListener('input', Utils.debounce(renderConversationsList, 200));
 
     // Logout button
-    elements.btnLogout.addEventListener('click', () => {
-      if (confirm('Are you sure you want to log out?')) {
+    elements.btnLogout.addEventListener('click', async () => {
+      if (await AppUI.confirm({title:'Sign out of Relay?', description:'Your conversations will be here when you return.', action:'Sign out', danger:false})) {
         Auth.logout();
       }
     });
@@ -872,7 +1019,7 @@ document.addEventListener('DOMContentLoaded', () => {
         Utils.openModal('modal-create-story');
       });
     }
-    elements.btnSearchMessages.addEventListener('click', () => setupSearchMessagesModal());
+    elements.btnSearchMessages.addEventListener('click', () => setupSearchMessagesModal(activeConversation?.id));
     elements.btnChatInfo.addEventListener('click', () => setupChatInfoModal());
 
     // Generic modal close buttons
@@ -883,11 +1030,7 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
 
-    // Auto-grow textarea
-    elements.messageInput.addEventListener('input', function() {
-      this.style.height = 'auto';
-      this.style.height = Math.min(this.scrollHeight, 120) + 'px';
-    });
+    syncComposer();
   };
 
   // --- Modal: New Direct Chat ---
@@ -907,6 +1050,7 @@ document.addEventListener('DOMContentLoaded', () => {
       resultsContainer.innerHTML = '<div class="empty-list-notice">Searching...</div>';
       try {
         const users = await Users.search(q);
+        if (input.value.trim() !== q) return;
         if (users.length === 0) {
           resultsContainer.innerHTML = '<div class="empty-list-notice">No users found</div>';
           return;
@@ -926,7 +1070,7 @@ document.addEventListener('DOMContentLoaded', () => {
           resultsContainer.appendChild(item);
         });
       } catch (err) {
-        resultsContainer.innerHTML = `<div class="empty-list-notice error-text">${err.message}</div>`;
+        resultsContainer.innerHTML = `<div class="empty-list-notice error-text">${Utils.escapeHTML(err.message)}</div>`;
       }
     }, 250);
   };
@@ -960,7 +1104,7 @@ document.addEventListener('DOMContentLoaded', () => {
         label.className = 'member-check-item';
         label.innerHTML = `
           <input type="checkbox" value="${u.id}" class="member-checkbox" />
-          <img src="${API.resolveUrl(u.avatar_url) || `https://api.dicebear.com/7.x/initials/svg?seed=${u.username}`}" class="user-avatar-sm" />
+          <img src="${AppUI.avatarUrl(u.avatar_url,u.display_name || u.username)}" class="user-avatar-sm" />
           <span>${Utils.escapeHTML(u.display_name || u.username)}</span>
         `;
         memberChecklist.appendChild(label);
@@ -976,6 +1120,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const selectedIds = Utils.$$('.member-checkbox:checked', memberChecklist).map(cb => parseInt(cb.value));
 
+      if (name.length > 100) { Utils.showToast('Use a group name under 100 characters.', 'warning'); return; }
+      btnCreate.disabled = true;
       try {
         const newGroup = await Groups.create(name, selectedIds, groupDescInput.value.trim());
         Utils.closeModal('modal-new-group');
@@ -984,141 +1130,212 @@ document.addEventListener('DOMContentLoaded', () => {
         selectConversation(newGroup);
       } catch (err) {
         Utils.showToast(err.message, 'error');
-      }
+      } finally { btnCreate.disabled = false; }
     };
   };
 
-  // --- Modal: Search Messages ---
-  const setupSearchMessagesModal = () => {
+  // Search uses the existing contacts and message endpoints, plus the loaded conversation index.
+  const setupSearchMessagesModal = (scope = null, initial = '') => {
     Utils.openModal('modal-search-messages');
-    const input = Utils.$('#search-query-input');
-    const resultsContainer = Utils.$('#search-messages-results');
-    input.value = '';
-    resultsContainer.innerHTML = '<div class="empty-list-notice">Type a keyword to search message history...</div>';
-
-    input.oninput = Utils.debounce(async () => {
-      const q = input.value.trim();
-      if (!q) {
-        resultsContainer.innerHTML = '<div class="empty-list-notice">Type a keyword to search message history...</div>';
-        return;
+    const input = document.getElementById('search-query-input');
+    const results = document.getElementById('search-messages-results');
+    const tabs = [...document.querySelectorAll('[data-search-type]')];
+    const recentKey = `relay-searches-${currentUser.id}`;
+    let type = scope ? 'messages' : 'chats';
+    let request = 0;
+    input.value = initial;
+    document.getElementById('search-dialog-title').textContent = scope ? `Search in ${chatName(activeConversation)}` : 'Find a conversation';
+    input.placeholder = scope ? 'Search this conversation…' : 'Search people, chats, or messages…';
+    document.getElementById('search-type-tabs').classList.toggle('hidden',!!scope);
+    const saveRecent = q => {
+      if (q) AppUI.write(recentKey, [q, ...AppUI.read(recentKey,[]).filter(v => v !== q)].slice(0,5));
+    };
+    const empty = () => {
+      document.getElementById('btn-clear-message-search').classList.add('hidden');
+      const recent = AppUI.read(recentKey,[]);
+      results.innerHTML = '<div class="search-hint"><span data-icon="search"></span><p>Find your people. Pick up a conversation.</p><small>Search a name, username, or something you remember.</small></div>';
+      if (recent.length) {
+        results.innerHTML += '<div class="search-section-heading"><span>Recent searches</span><button id="btn-clear-recent-searches" class="text-button">Clear</button></div>';
+        recent.forEach(q => { const button = document.createElement('button'); button.className = 'recent-search'; button.innerHTML = AppUI.icon('clock'); const label = document.createElement('span'); label.textContent = q; button.append(label); button.onclick = () => { input.value = q; search(); }; results.append(button); });
+        document.getElementById('btn-clear-recent-searches').onclick = () => { AppUI.write(recentKey,[]); empty(); };
       }
+    };
+    const search = async () => {
+      const q = input.value.trim(); const req = ++request;
+      tabs.forEach(tab => { tab.classList.toggle('active',tab.dataset.searchType === type); tab.setAttribute('aria-pressed',String(tab.dataset.searchType === type)); });
+      if (!q) { empty(); return; }
+      document.getElementById('btn-clear-message-search').classList.remove('hidden');
+      results.innerHTML = '<div class="skeleton-row" aria-label="Searching"></div><div class="skeleton-row"></div>';
       try {
-        const matches = await API.get('/search/messages', { q });
-        if (matches.length === 0) {
-          resultsContainer.innerHTML = '<div class="empty-list-notice">No messages found matching query.</div>';
-          return;
-        }
-
-        resultsContainer.innerHTML = '';
-        matches.forEach(m => {
-          const item = document.createElement('div');
-          item.className = 'search-result-item';
-          item.innerHTML = `
-            <div class="result-conv-name">${Utils.escapeHTML(m.conversation_name)}</div>
-            <div class="result-sender">${Utils.escapeHTML(m.sender_name)}: <span class="result-content">${Utils.escapeHTML(m.content)}</span></div>
-            <div class="result-time">${Utils.formatMessageTime(m.created_at)}</div>
-          `;
-          item.addEventListener('click', async () => {
-            Utils.closeModal('modal-search-messages');
-            const conv = conversations.find(c => c.id === m.conversation_id);
-            if (conv) {
-              await selectConversation(conv);
-              setTimeout(() => {
-                const targetMsg = document.getElementById(`msg-${m.message_id}`);
-                if (targetMsg) targetMsg.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              }, 400);
-            }
-          });
-          resultsContainer.appendChild(item);
+        const matches = type === 'contacts' ? await Users.search(q) : type === 'messages' ? await API.get('/search/messages',{q}) : conversations.filter(conv => `${chatName(conv)} ${conv.other_user?.username || ''}`.toLowerCase().includes(q.toLowerCase()));
+        if (req !== request || input.value.trim() !== q) return;
+        const visible = scope ? matches.filter(m => m.conversation_id === scope) : matches;
+        results.innerHTML = '';
+        if (!visible.length) { results.innerHTML = `<div class="list-empty"><span data-icon="search"></span><h3>No ${type} found</h3><p>Try a different name or keyword.</p></div>`; return; }
+        visible.forEach(match => {
+          if (type === 'contacts') {
+            const item = Users.renderUserItem(match, async user => {
+              saveRecent(q); Utils.closeModal('modal-search-messages');
+              try { const conv = await API.post('/conversations/direct',{recipient_id:user.id}); await loadConversations(); await selectConversation(conv); }
+              catch { Utils.showToast('This conversation couldn’t be opened. Please try again.', 'error'); }
+            });
+            item.querySelector('.user-name').innerHTML = AppUI.highlight(match.display_name || match.username,q);
+            item.querySelector('.user-handle').innerHTML = AppUI.highlight('@'+match.username,q);
+            results.append(item); return;
+          }
+          const item = document.createElement('button'); item.className = 'search-result-item';
+          if (type === 'chats') {
+            item.innerHTML = `<img class="user-avatar-sm" src="${Utils.escapeHTML(chatAvatar(match))}" alt="" /><span><span class="result-conv-name">${AppUI.highlight(chatName(match),q)}</span><span class="result-content">${Utils.escapeHTML(match.last_message?.content || 'Start a conversation')}</span></span>${AppUI.icon('arrow-right')}`;
+            item.onclick = () => { saveRecent(q); Utils.closeModal('modal-search-messages'); selectConversation(match); };
+          } else {
+            const conv = conversations.find(c => c.id === match.conversation_id);
+            item.innerHTML = `<span><span class="result-conv-name">${Utils.escapeHTML(conv ? chatName(conv) : match.conversation_name)}</span><span class="result-content">${AppUI.highlight(match.content,q)}</span><span class="result-time">${Utils.escapeHTML(match.sender_name)} · ${Utils.formatDateHeader(match.created_at)} · ${Utils.formatMessageTime(match.created_at)}</span></span>${AppUI.icon('arrow-right')}`;
+            item.onclick = async () => {
+              if (!conv) return;
+              saveRecent(q); Utils.closeModal('modal-search-messages'); await selectConversation(conv);
+              if (activeConversation?.id !== conv.id) return;
+              if (!document.getElementById(`msg-${match.message_id}`)) {
+                try {
+                  const history = await API.get(`/messages/conversation/${conv.id}`,{limit:50,before_id:match.message_id + 1});
+                  if (activeConversation?.id !== conv.id) return;
+                  messages = history; hasEarlier = history.length === 50; renderMessages();
+                  document.getElementById('btn-load-earlier').classList.toggle('hidden',!hasEarlier);
+                  document.getElementById('history-context').classList.remove('hidden');
+                } catch { Utils.showToast('This message couldn’t be loaded. Please try again.', 'error'); return; }
+              }
+              const target = document.getElementById(`msg-${match.message_id}`);
+              target?.scrollIntoView({behavior:'smooth',block:'center'}); target?.classList.add('message-highlight');
+              setTimeout(() => target?.classList.remove('message-highlight'),2000);
+            };
+          }
+          results.append(item);
         });
-      } catch (err) {
-        resultsContainer.innerHTML = `<div class="empty-list-notice error-text">${err.message}</div>`;
-      }
-    }, 250);
+      } catch { if (req === request) results.innerHTML = '<div class="list-empty"><span data-icon="wifi-off"></span><h3>Search couldn’t load</h3><p>Check your connection and try again.</p></div>'; }
+    };
+    tabs.forEach(tab => tab.onclick = () => { type = tab.dataset.searchType; search(); });
+    input.oninput = Utils.debounce(search,200);
+    document.getElementById('btn-clear-message-search').onclick = () => { input.value = ''; search(); input.focus(); };
+    initial ? search() : empty();
   };
 
-  // --- Modal: Chat & Group Info ---
+  const renderSharedContent = () => {
+    const list = document.getElementById('shared-content-list'); if (!list) return;
+    const attachments = messages.filter(m => !m.is_deleted).flatMap(m => m.attachments || []);
+    const media = attachments.filter(a => a.file_type.startsWith('image/'));
+    const files = attachments.filter(a => !a.file_type.startsWith('image/'));
+    const links = [...new Set(messages.filter(m => !m.is_deleted).flatMap(m => (m.content || '').match(/https?:\/\/[^\s<>]+/gi) || []).map(url => url.replace(/[.,!?;:)]+$/, '')))];
+    const sets = {media,files,links};
+    document.querySelectorAll('[data-shared-tab]').forEach(tab => {
+      tab.classList.toggle('active',tab.dataset.sharedTab === selectedSharedTab);
+      tab.setAttribute('aria-pressed',String(tab.dataset.sharedTab === selectedSharedTab));
+      tab.querySelector('span').textContent = sets[tab.dataset.sharedTab].length;
+      tab.onclick = () => { selectedSharedTab = tab.dataset.sharedTab; renderSharedContent(); };
+    });
+    list.className = selectedSharedTab === 'media' ? 'shared-media-grid' : 'shared-content-list'; list.innerHTML = '';
+    const content = sets[selectedSharedTab];
+    if (!content.length) { list.innerHTML = `<p class="shared-empty">No ${selectedSharedTab} in loaded history yet.</p>`; return; }
+    content.forEach(item => {
+      const url = selectedSharedTab === 'links' ? item : API.resolveUrl(item.file_url);
+      const link = document.createElement('a'); link.href = url; link.target = '_blank'; link.rel = 'noopener noreferrer';
+      if (selectedSharedTab === 'media') {
+        const img = document.createElement('img'); img.src = url; img.alt = item.file_name; img.loading = 'lazy'; link.append(img);
+        link.onclick = e => { e.preventDefault(); document.getElementById('attachment-preview-image').src = url; document.getElementById('attachment-preview-image').alt = item.file_name; document.getElementById('attachment-preview-download').href = url; document.getElementById('attachment-preview-title').textContent = item.file_name; Utils.openModal('modal-attachment-preview'); };
+      } else {
+        link.innerHTML = AppUI.icon(selectedSharedTab === 'links' ? 'link' : 'file');
+        const label = document.createElement('span'); label.textContent = selectedSharedTab === 'links' ? item : item.file_name;
+        link.append(label); if (selectedSharedTab === 'files') { const size = document.createElement('small'); size.textContent = Utils.formatFileSize(item.file_size); link.append(size); }
+      }
+      list.append(link);
+    });
+  };
   const setupChatInfoModal = () => {
     if (!activeConversation) return;
+    const conv = activeConversation; const isGroup = conv.type === 'GROUP'; const admin = isGroupAdmin(conv);
     Utils.openModal('modal-group-info');
-
-    const isGroup = activeConversation.type === 'GROUP';
-    const title = activeConversation.name || (activeConversation.other_user && (activeConversation.other_user.display_name || activeConversation.other_user.username));
-    const avatar = API.resolveUrl(activeConversation.avatar_url) || `https://api.dicebear.com/7.x/initials/svg?seed=${title}`;
-
-    Utils.$('#group-info-avatar').src = avatar;
-    Utils.$('#group-info-name').textContent = title;
-    Utils.$('#group-info-desc').textContent = activeConversation.description || (isGroup ? 'No description' : (activeConversation.other_user?.bio || 'No bio'));
-
-    const membersSection = Utils.$('#group-members-section');
-    const memberList = Utils.$('#group-members-list');
-    const btnLeaveGroup = Utils.$('#btn-leave-group');
-    const btnBlockUser = Utils.$('#btn-block-contact');
-
-    if (isGroup) {
-      membersSection.classList.remove('hidden');
-      btnLeaveGroup.classList.remove('hidden');
-      btnBlockUser.classList.add('hidden');
-
-      memberList.innerHTML = '';
-      activeConversation.members.forEach(m => {
-        const item = document.createElement('div');
-        item.className = 'member-item';
-        const u = m.user;
-        const uAvatar = API.resolveUrl(u?.avatar_url) || `https://api.dicebear.com/7.x/initials/svg?seed=${u?.username}`;
-        item.innerHTML = `
-          <img src="${uAvatar}" class="user-avatar-sm" />
-          <div class="member-info">
-            <span class="member-name">${Utils.escapeHTML(u?.display_name || u?.username)}</span>
-            <span class="member-role ${m.role === 'ADMIN' ? 'admin-badge' : ''}">${m.role}</span>
-          </div>
-          ${isGroupAdmin(activeConversation) && m.user_id !== currentUser.id ? `
-            <button class="btn btn-sm btn-danger btn-remove-member" data-id="${m.user_id}">Remove</button>
-          ` : ''}
-        `;
-
-        const removeBtn = item.querySelector('.btn-remove-member');
-        if (removeBtn) {
-          removeBtn.addEventListener('click', async () => {
-            if (confirm(`Remove member?`)) {
-              await Groups.removeMember(activeConversation.id, m.user_id);
-              Utils.showToast('Member removed', 'info');
-              activeConversation.members = activeConversation.members.filter(mem => mem.user_id !== m.user_id);
-              setupChatInfoModal();
-            }
-          });
-        }
-
-        memberList.appendChild(item);
+    document.getElementById('btn-details').setAttribute('aria-expanded','true');
+    document.getElementById('group-info-avatar').src = chatAvatar(conv);
+    document.getElementById('group-info-avatar').alt = chatName(conv);
+    document.getElementById('group-info-name').textContent = chatName(conv);
+    document.getElementById('group-info-handle').textContent = isGroup ? `${conv.members.length} members · Group conversation` : `@${conv.other_user?.username || ''}`;
+    document.getElementById('group-info-desc').textContent = conv.description || conv.other_user?.bio || (isGroup ? 'A place to keep everyone in the loop.' : 'A little closer, one conversation at a time.');
+    document.getElementById('group-members-section').classList.toggle('hidden',!isGroup);
+    document.getElementById('btn-leave-group').classList.toggle('hidden',!isGroup);
+    document.getElementById('btn-block-contact').classList.toggle('hidden',isGroup);
+    document.getElementById('btn-edit-group').classList.toggle('hidden',!admin);
+    document.getElementById('btn-add-group-member').classList.toggle('hidden',!admin);
+    document.getElementById('btn-edit-group').onclick = () => setupEditGroup(conv);
+    document.getElementById('btn-add-group-member').onclick = () => setupAddMember(conv);
+    const favorite = document.getElementById('btn-detail-favorite'); const mute = document.getElementById('btn-detail-mute');
+    favorite.innerHTML = `${AppUI.icon('star')}<span>${pref(conv.id).favorite ? 'Favorited' : 'Favorite'}</span>`;
+    mute.innerHTML = `${AppUI.icon(pref(conv.id).muted ? 'bell-off' : 'bell')}<span>${pref(conv.id).muted ? 'Muted' : 'Notifications'}</span>`;
+    favorite.setAttribute('aria-pressed',String(!!pref(conv.id).favorite)); mute.setAttribute('aria-pressed',String(!!pref(conv.id).muted));
+    favorite.onclick = () => { updatePreference(conv.id,'favorite'); setupChatInfoModal(); };
+    mute.onclick = () => { updatePreference(conv.id,'muted'); setupChatInfoModal(); };
+    renderSharedContent();
+    const members = document.getElementById('group-members-list'); members.innerHTML = '';
+    if (isGroup) conv.members.forEach(member => {
+      const u = member.user; const item = document.createElement('div'); item.className = 'member-item';
+      item.innerHTML = `<img class="user-avatar-sm" src="${Utils.escapeHTML(AppUI.avatarUrl(u?.avatar_url,u?.display_name || u?.username))}" alt="" /><div class="member-info"><span class="member-name">${Utils.escapeHTML(u?.display_name || u?.username || 'Member')}${member.user_id === currentUser.id ? ' (you)' : ''}</span><span class="member-role ${member.role === 'ADMIN' ? 'admin-badge' : ''}">${member.role === 'ADMIN' ? 'Admin' : 'Member'}</span></div>${admin && member.user_id !== currentUser.id ? '<button class="icon-btn btn-remove-member" title="Remove member" aria-label="Remove member">'+AppUI.icon('x')+'</button>' : ''}`;
+      item.querySelector('.btn-remove-member')?.setAttribute('aria-label',`Remove ${u?.display_name || u?.username || 'member'}`);
+      item.querySelector('.btn-remove-member')?.addEventListener('click',async () => {
+        if (!await AppUI.confirm({title:'Remove this member?',description:`${u?.display_name || u?.username} will no longer have access to this group.`,action:'Remove member'})) return;
+        try { await Groups.removeMember(conv.id,member.user_id); await loadConversations(); Utils.showToast('Member removed', 'success'); }
+        catch { Utils.showToast('This member couldn’t be removed. Please try again.', 'error'); }
       });
-
-      btnLeaveGroup.onclick = async () => {
-        if (confirm('Leave this group?')) {
-          await Groups.leave(activeConversation.id);
-          Utils.closeModal('modal-group-info');
-          activeConversation = null;
-          elements.activeChatWindow.classList.add('hidden');
-          elements.emptyChatState.classList.remove('hidden');
-          await loadConversations();
-        }
-      };
-    } else {
-      // 1-on-1 Chat Info
-      membersSection.classList.add('hidden');
-      btnLeaveGroup.classList.add('hidden');
-      btnBlockUser.classList.remove('hidden');
-
-      btnBlockUser.onclick = async () => {
-        if (confirm(`Block ${title}?`)) {
-          await Users.blockUser(activeConversation.other_user.id);
-          Utils.closeModal('modal-group-info');
-          activeConversation = null;
-          elements.activeChatWindow.classList.add('hidden');
-          elements.emptyChatState.classList.remove('hidden');
-          await loadConversations();
-        }
-      };
-    }
+      members.append(item);
+    });
+    document.getElementById('btn-leave-group').onclick = async () => {
+      if (!await AppUI.confirm({title:'Leave this group?',description:'You’ll need to be added again to rejoin the conversation.',action:'Leave group'})) return;
+      try { await Groups.leave(conv.id); closeConversation(); await loadConversations(); Utils.showToast('You left the group', 'info'); }
+      catch { Utils.showToast('The group couldn’t be left. Please try again.', 'error'); }
+    };
+    document.getElementById('btn-block-contact').onclick = async () => {
+      if (!await AppUI.confirm({title:`Block ${chatName(conv)}?`,description:'You won’t be able to exchange direct messages. You can unblock this person in Privacy settings.',action:'Block contact'})) return;
+      try { await Users.blockUser(conv.other_user.id); Utils.closeModal('modal-group-info'); }
+      catch { Utils.showToast('This contact couldn’t be blocked. Please try again.', 'error'); }
+    };
+  };
+  const setupEditGroup = conv => {
+    document.getElementById('edit-group-name').value = conv.name;
+    document.getElementById('edit-group-description').value = conv.description || '';
+    Utils.openModal('modal-edit-group');
+    document.getElementById('edit-group-form').onsubmit = async e => {
+      e.preventDefault(); const button = document.getElementById('btn-save-group'); button.disabled = true;
+      try { await Groups.update(conv.id,document.getElementById('edit-group-name').value.trim(),document.getElementById('edit-group-description').value.trim(),conv.avatar_url); Utils.closeModal('modal-edit-group'); await loadConversations(); Utils.showToast('Group updated', 'success'); }
+      catch { Utils.showToast('The group couldn’t be updated. Please try again.', 'error'); }
+      finally { button.disabled = false; }
+    };
+  };
+  const setupAddMember = conv => {
+    Utils.openModal('modal-add-member'); const input = document.getElementById('add-member-search'); const results = document.getElementById('add-member-results');
+    input.value = ''; results.innerHTML = '<p class="empty-list-notice">Find a person by name or username.</p>';
+    input.oninput = Utils.debounce(async () => {
+      const q = input.value.trim(); if (!q) { results.innerHTML = ''; return; }
+      try {
+        const users = await Users.search(q); if (input.value.trim() !== q) return;
+        results.innerHTML = ''; const existing = new Set(conv.members.map(m => m.user_id));
+        users.filter(u => !existing.has(u.id)).forEach(u => {
+          const item = Users.renderUserItem(u,async selected => {
+            try { await Groups.addMember(conv.id,selected.id); Utils.closeModal('modal-add-member'); await loadConversations(); Utils.showToast('Member added', 'success'); }
+            catch { Utils.showToast('This person couldn’t be added. Please try again.', 'error'); }
+          }); item.querySelector('.action-btn').textContent = 'Add'; results.append(item);
+        });
+        if (!results.childElementCount) results.innerHTML = '<p class="empty-list-notice">No new people found.</p>';
+      } catch { results.innerHTML = '<p class="empty-list-notice">People couldn’t load. Please try again.</p>'; }
+    },250);
+  };
+  const loadBlockedUsers = async () => {
+    const list = document.getElementById('blocked-users-list');
+    list.innerHTML = '<div class="skeleton-row"></div>';
+    try {
+      const users = await Users.getBlockedUsers(); list.innerHTML = '';
+      if (!users.length) list.innerHTML = '<p class="shared-empty">No blocked contacts.</p>';
+      users.forEach(user => {
+        const item = document.createElement('div'); item.className = 'member-item';
+        item.innerHTML = `<span class="member-info">${Utils.escapeHTML(user.display_name || user.username)}</span><button class="btn btn-secondary btn-sm">Unblock</button>`;
+        item.querySelector('button').onclick = async () => { try { await Users.unblockUser(user.id); loadBlockedUsers(); } catch { Utils.showToast('This contact couldn’t be unblocked.', 'error'); } }; list.append(item);
+      });
+    } catch { list.innerHTML = '<p class="shared-empty">Blocked contacts couldn’t load.</p>'; }
   };
 
   // --- Modal: Settings ---
@@ -1136,9 +1353,14 @@ document.addEventListener('DOMContentLoaded', () => {
         tab.classList.add('active');
         const target = Utils.$(`#pane-${tab.dataset.tab}`);
         if (target) target.classList.add('active');
+        if (tab.dataset.tab === 'privacy') loadBlockedUsers();
+        if (tab.dataset.tab === 'security') { loadSessions(); load2FA(); loadPasskeys(); }
       };
     });
 
+    currentUser = Auth.getCurrentUser() || currentUser;
+    Utils.$('#settings-cur-password').closest('.form-group').classList.toggle('hidden',currentUser.has_password === false);
+    Utils.$('#settings-avatar-preview').src = AppUI.avatarUrl(currentUser.avatar_url,currentUser.display_name || currentUser.username);
     // Populate inputs with current settings
     Utils.$('#settings-display-name').value = currentUser.display_name || '';
     Utils.$('#settings-bio').value = currentUser.bio || '';
@@ -1152,32 +1374,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Save Profile
     Utils.$('#btn-save-profile').onclick = async () => {
+      const button = Utils.$('#btn-save-profile'); button.disabled = true; button.textContent = 'Saving…';
       try {
         const dName = Utils.$('#settings-display-name').value.trim();
         const bio = Utils.$('#settings-bio').value.trim();
-        await ProfileManager.updateProfile(dName, bio);
+        currentUser = await ProfileManager.updateProfile(dName, bio);
         initUserHeader();
       } catch (e) {}
+      finally { button.disabled = false; button.textContent = 'Save Profile'; }
     };
 
     // Save Privacy
     Utils.$('#btn-save-privacy').onclick = async () => {
+      const button = Utils.$('#btn-save-privacy'); button.disabled = true; button.textContent = 'Saving…';
       try {
         const lastSeen = Utils.$('#settings-show-last-seen').checked;
         const online = Utils.$('#settings-show-online').checked;
         const read = Utils.$('#settings-show-read').checked;
-        await ProfileManager.updatePrivacy(lastSeen, online, read);
+        currentUser = await ProfileManager.updatePrivacy(lastSeen, online, read);
       } catch (e) {}
+      finally { button.disabled = false; button.textContent = 'Save Privacy'; }
     };
 
     // Save Notifications
     Utils.$('#btn-save-notifications').onclick = async () => {
       const sound = Utils.$('#settings-sound-enabled').checked;
       const desktop = Utils.$('#settings-desktop-enabled').checked;
-      if (desktop) {
-        await Notifications.requestPermission();
-      }
-      Notifications.saveSettings({ soundEnabled: sound, desktopEnabled: desktop });
+      const enabled = desktop ? await Notifications.requestPermission() : false;
+      Utils.$('#settings-desktop-enabled').checked = enabled;
+      Notifications.saveSettings({ soundEnabled: sound, desktopEnabled: enabled });
+      if (desktop && !enabled) Utils.showToast('Desktop notifications are blocked or unavailable in this browser.', 'warning');
       Utils.showToast('Notification preferences saved!', 'success');
     };
 
@@ -1199,7 +1425,7 @@ document.addEventListener('DOMContentLoaded', () => {
           const item = document.createElement('div');
           item.className = 'session-item';
           const isPhone = s.device_name && (s.device_name.includes('iPhone') || s.device_name.includes('Android') || s.device_name.includes('iPad'));
-          const icon = isPhone ? '📱' : '💻';
+          const icon = AppUI.icon(isPhone ? 'smartphone' : 'monitor');
           const lastActiveStr = Utils.formatLastSeen(false, s.last_active);
 
           item.innerHTML = `
@@ -1211,7 +1437,7 @@ document.addEventListener('DOMContentLoaded', () => {
                   ${s.is_current ? '<span class="session-current-tag">This device</span>' : ''}
                 </div>
                 <div class="session-meta">
-                  ${s.ip_address || 'Unknown IP'} • ${lastActiveStr}
+                  ${Utils.escapeHTML(s.ip_address || 'Unknown IP')} • ${lastActiveStr}
                 </div>
               </div>
             </div>
@@ -1239,7 +1465,7 @@ document.addEventListener('DOMContentLoaded', () => {
           };
         });
       } catch (err) {
-        container.innerHTML = `<div style="font-size: 0.8125rem; color: #ef4444; text-align: center;">Failed to load sessions: ${err.message}</div>`;
+        container.innerHTML = `<div style="font-size: 0.8125rem; color: #ef4444; text-align: center;">Failed to load sessions: ${Utils.escapeHTML(err.message)}</div>`;
       }
     };
 
@@ -1247,7 +1473,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnTerminateOthers = Utils.$('#btn-terminate-other-sessions');
     if (btnTerminateOthers) {
       btnTerminateOthers.onclick = async () => {
-        if (!confirm('Log out from all other devices?')) return;
+        if (!await AppUI.confirm({title:'Log out other devices?',description:'This device will stay signed in. Other devices will need to sign in again.',action:'Log out devices'})) return;
         try {
           const res = await Auth.revokeOtherSessions();
           Utils.showToast(res.message, 'success');
@@ -1267,7 +1493,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const btnOpenSetup = Utils.$('#btn-open-2fa-setup');
         const btnDisable = Utils.$('#btn-disable-2fa');
 
-        if (user.totp_enabled) {
+        if (user.totp_enabled === undefined) {
+          badge.textContent = 'Status unavailable'; badge.className = 'security-badge';
+          btnOpenSetup.textContent = 'Set up 2FA'; btnDisable.classList.remove('hidden');
+        } else if (user.totp_enabled) {
           badge.textContent = 'Active';
           badge.className = 'security-badge active';
           btnOpenSetup.textContent = 'Reconfigure 2FA';
@@ -1326,6 +1555,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
           Utils.$('#setup-2fa-step-1').classList.add('hidden');
           Utils.$('#setup-2fa-step-2').classList.remove('hidden');
+          Auth.setCurrentUser({...Auth.getCurrentUser(),totp_enabled:true});
           load2FA();
           Utils.showToast('Two-factor authentication enabled!', 'success');
         } catch (err) {
@@ -1359,10 +1589,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnDisable2FA = Utils.$('#btn-disable-2fa');
     if (btnDisable2FA) {
       btnDisable2FA.onclick = async () => {
-        const code = prompt('Enter a code from your authenticator app or account password to disable 2FA:');
+        const code = await AppUI.requestInput({title:'Disable two-factor authentication?',description:'Verify your identity with an authenticator code or account password.',label:'Authenticator code or password',type:'password',action:'Disable 2FA'});
         if (!code) return;
         try {
           await Auth.disable2FA(code.length === 6 && !isNaN(code) ? code : null, code);
+          Auth.setCurrentUser({...Auth.getCurrentUser(),totp_enabled:false});
           Utils.showToast('Two-factor authentication disabled', 'info');
           load2FA();
         } catch (err) {
@@ -1388,7 +1619,7 @@ document.addEventListener('DOMContentLoaded', () => {
           item.className = 'session-item';
           item.innerHTML = `
             <div class="session-info">
-              <span class="session-icon">🔑</span>
+              <span class="session-icon">${AppUI.icon('key')}</span>
               <div>
                 <div class="session-device-name">${Utils.escapeHTML(k.name || 'Passkey')}</div>
                 <div class="session-meta">Created ${Utils.formatLastSeen(false, k.created_at)}</div>
@@ -1401,7 +1632,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         container.querySelectorAll('.btn-del-passkey').forEach(btn => {
           btn.onclick = async () => {
-            if (!confirm('Remove this passkey?')) return;
+            if (!await AppUI.confirm({title:'Remove this passkey?',description:'This key will no longer be available to sign in to your account.',action:'Remove passkey'})) return;
             try {
               await Auth.deletePasskey(btn.dataset.id);
               Utils.showToast('Passkey removed', 'info');
@@ -1412,7 +1643,7 @@ document.addEventListener('DOMContentLoaded', () => {
           };
         });
       } catch (err) {
-        container.innerHTML = `<div style="font-size: 0.8125rem; color: #ef4444; text-align: center;">Failed to load passkeys: ${err.message}</div>`;
+        container.innerHTML = `<div style="font-size: 0.8125rem; color: #ef4444; text-align: center;">Failed to load passkeys: ${Utils.escapeHTML(err.message)}</div>`;
       }
     };
 
@@ -1445,16 +1676,8 @@ document.addEventListener('DOMContentLoaded', () => {
       };
     }
 
-    // Refresh security tab contents when opened
-    Utils.$$('.settings-tab-btn').forEach(b => {
-      b.addEventListener('click', () => {
-        if (b.dataset.tab === 'security') {
-          loadSessions();
-          load2FA();
-          loadPasskeys();
-        }
-      });
-    });
+    if (document.querySelector('.settings-tab-btn.active')?.dataset.tab === 'privacy') loadBlockedUsers();
+    if (document.querySelector('.settings-tab-btn.active')?.dataset.tab === 'security') { loadSessions(); load2FA(); loadPasskeys(); }
 
     // 4. Change Password
     Utils.$('#btn-save-password').onclick = async () => {
@@ -1489,6 +1712,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
+  document.getElementById('btn-history-latest').onclick = () => { document.getElementById('history-context').classList.add('hidden'); if (activeConversation) loadMessageHistory(activeConversation); };
+  elements.modalGroupInfo.addEventListener('dialogclose', () => document.getElementById('btn-details').setAttribute('aria-expanded','false'));
   // Initialize Application
   initUserHeader();
   initWebSocket();
@@ -1496,4 +1721,7 @@ document.addEventListener('DOMContentLoaded', () => {
   Stories.init();
   bindUIEvents();
   loadConversations();
+  if (outbox.size) Utils.showToast('Your unsent messages are saved. Open their conversations to retry.', 'info');
+  const settingsTab = new URLSearchParams(location.search).get('settings');
+  if (settingsTab) { setupSettingsModal(); document.querySelector(`[data-tab="${CSS.escape(settingsTab)}"]`)?.click(); }
 });

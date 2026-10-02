@@ -34,11 +34,11 @@ const Users = {
   renderUserItem: (user, onSelect) => {
     const item = document.createElement('div');
     item.className = 'user-search-item';
-    const avatar = API.resolveUrl(user.avatar_url) || `https://api.dicebear.com/7.x/initials/svg?seed=${user.username}`;
+    const avatar = AppUI.avatarUrl(user.avatar_url,user.display_name || user.username);
     
     item.innerHTML = `
       <div class="user-avatar-wrap">
-        <img src="${avatar}" alt="${Utils.escapeHTML(user.username)}" class="user-avatar" />
+        <img src="${Utils.escapeHTML(avatar)}" alt="${Utils.escapeHTML(user.username)}" class="user-avatar" />
         <span class="online-dot ${user.is_online ? 'online' : 'offline'}"></span>
       </div>
       <div class="user-info">
@@ -54,7 +54,9 @@ const Users = {
       onSelect(user);
     });
 
+    item.tabIndex = 0; item.setAttribute('role','group'); item.setAttribute('aria-label',user.display_name || user.username);
     item.addEventListener('click', () => onSelect(user));
+    item.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === item) { e.preventDefault(); onSelect(user); } });
 
     return item;
   }

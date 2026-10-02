@@ -2,9 +2,10 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install build dependencies
+# Install system dependencies (gcc for builds, libpq-dev for psycopg2)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python requirements
@@ -16,7 +17,8 @@ COPY backend ./backend
 COPY frontend ./frontend
 
 # Create data directories
-RUN mkdir -p /app/backend/uploads /app/data
+# /var/data is where Render mounts a Persistent Disk (paid plan)
+RUN mkdir -p /app/backend/uploads /var/data
 
 # Environment variables
 ENV PYTHONPATH=/app/backend

@@ -33,7 +33,10 @@ class UserResponse(BaseModel):
 
     id: int
     username: str
-    email: EmailStr
+    email: Optional[EmailStr] = None
+    phone_number: Optional[str] = None
+    totp_enabled: bool = False
+    has_password: bool = False
     display_name: Optional[str] = None
     avatar_url: Optional[str] = None
     bio: Optional[str] = None

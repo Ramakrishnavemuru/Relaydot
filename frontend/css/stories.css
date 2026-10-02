@@ -58,7 +58,7 @@
 
 /* Gradient ring for unviewed stories */
 .story-avatar-ring.unviewed {
-  background: linear-gradient(45deg, #f59e0b, #ec4899, #6366f1);
+  background: var(--primary-solid);
 }
 
 /* Subdued ring for viewed stories */
@@ -349,3 +349,9 @@
   padding: 0.4rem 0;
   border-bottom: 1px solid var(--border-subtle);
 }
+
+button.story-tap-zone { border:0; padding:0; background:transparent; }
+
+.story-viewers-drawer { visibility:hidden; }.story-viewers-drawer.open { visibility:visible; }
+
+button.story-circle-item { border:0; padding:0; background:transparent; font:inherit; color:inherit; }

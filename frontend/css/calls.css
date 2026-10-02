@@ -296,3 +296,7 @@
     font-size: 1.3rem;
   }
 }
+
+/* Hidden ringing controls must also be absent from keyboard and screen readers. */
+.incoming-call-overlay { visibility:hidden; }.incoming-call-overlay.active { visibility:visible; }
+@media (max-width:430px) { .incoming-call-overlay { width:calc(100% - 24px); gap:10px; padding:14px; }.incoming-caller-avatar { width:40px; height:40px; }.incoming-call-actions { gap:6px; }.incoming-caller-name { font-size:14px; } }

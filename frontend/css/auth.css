@@ -287,3 +287,7 @@
 @media (prefers-reduced-motion: reduce) {
   .auth-tab-btn, .contact-type-btn { transition: none; }
 }
+
+.welcome-features { display:flex; flex-direction:column; gap:16px; margin:0 0 32px; color:var(--text-secondary); font-size:13px; }.welcome-features > span { display:flex; align-items:center; gap:12px; }.welcome-features .ui-icon { width:18px; height:18px; color:var(--primary); }
+
+.passkey-icon-large .ui-icon { width:32px; height:32px; }

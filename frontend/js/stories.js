@@ -74,7 +74,7 @@ const Stories = {
     if (this.elements.btnDeleteStory) {
       this.elements.btnDeleteStory.addEventListener('click', async () => {
         const currentStory = this.getCurrentStory();
-        if (currentStory && confirm('Delete this story?')) {
+        if (currentStory && await AppUI.confirm({title:'Delete this story?',description:'This story will be removed for everyone.',action:'Delete story'})) {
           try {
             await API.delete(`/stories/${currentStory.id}`);
             Utils.showToast('Story deleted', 'info');
@@ -143,6 +143,8 @@ const Stories = {
           return;
         }
 
+        if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) { Utils.showToast('Choose a photo or video for your story.', 'error'); return; }
+        if (file.size > CONFIG.MAX_FILE_SIZE_MB * 1024 * 1024) { Utils.showToast(`Choose a file smaller than ${CONFIG.MAX_FILE_SIZE_MB} MB.`, 'error'); return; }
         this.elements.btnSubmitStory.disabled = true;
         this.elements.btnSubmitStory.textContent = 'Posting...';
 
@@ -166,7 +168,7 @@ const Stories = {
           this.elements.previewVideo.src = '';
           await this.loadStories();
         } catch (err) {
-          Utils.showToast('Failed to post story: ' + err.message, 'error');
+          Utils.showToast('Your story couldn’t be posted. Please try again.', 'error');
         } finally {
           this.elements.btnSubmitStory.disabled = false;
           this.elements.btnSubmitStory.textContent = 'Post Story';
@@ -180,7 +182,10 @@ const Stories = {
       this.storyGroups = await API.get('/stories');
       this.renderCarousel();
     } catch (e) {
-      console.warn('Failed to load stories:', e);
+      if (this.elements.carousel) {
+        this.elements.carousel.innerHTML = '<div class="shared-empty">Stories couldn’t load. <button class="text-button">Try again</button></div>';
+        this.elements.carousel.querySelector('button').onclick = () => this.loadStories();
+      }
     }
   },
 
@@ -192,13 +197,14 @@ const Stories = {
     const myGroup = this.storyGroups.find(g => g.user_id === currentUser.id);
 
     // 1. "Your Story" Item
-    const myItem = document.createElement('div');
+    const myItem = document.createElement('button');
+    myItem.type = 'button'; myItem.setAttribute('aria-label','Your story');
     myItem.className = 'story-circle-item';
-    const myAvatar = API.resolveUrl(currentUser.avatar_url) || `https://api.dicebear.com/7.x/initials/svg?seed=${currentUser.username}`;
+    const myAvatar = AppUI.avatarUrl(currentUser.avatar_url,currentUser.display_name || currentUser.username);
 
     myItem.innerHTML = `
       <div class="story-avatar-ring ${myGroup && myGroup.stories.length > 0 ? 'unviewed' : 'viewed'}">
-        <img src="${myAvatar}" alt="Your Story" class="story-avatar-img" />
+        <img src="${Utils.escapeHTML(myAvatar)}" alt="Your Story" class="story-avatar-img" />
         <span class="add-story-plus-badge">+</span>
       </div>
       <span class="story-user-label">Your Story</span>
@@ -221,14 +227,15 @@ const Stories = {
     this.storyGroups.forEach((group, index) => {
       if (group.user_id === currentUser.id) return; // Already rendered first
 
-      const item = document.createElement('div');
+      const item = document.createElement('button');
+      item.type = 'button'; item.setAttribute('aria-label',`Stories by ${group.display_name || group.username}`);
       item.className = 'story-circle-item';
-      const avatar = API.resolveUrl(group.avatar_url) || `https://api.dicebear.com/7.x/initials/svg?seed=${group.username}`;
+      const avatar = AppUI.avatarUrl(group.avatar_url,group.display_name || group.username);
       const ringClass = group.all_viewed ? 'viewed' : 'unviewed';
 
       item.innerHTML = `
         <div class="story-avatar-ring ${ringClass}">
-          <img src="${avatar}" alt="${Utils.escapeHTML(group.display_name)}" class="story-avatar-img" />
+          <img src="${Utils.escapeHTML(avatar)}" alt="${Utils.escapeHTML(group.display_name)}" class="story-avatar-img" />
         </div>
         <span class="story-user-label">${Utils.escapeHTML(group.display_name || group.username)}</span>
       `;
@@ -274,7 +281,7 @@ const Stories = {
       video.removeAttribute('src');
       video.load();
     });
-    this.elements.mediaStage.replaceChildren();
+    this.elements.mediaStage.querySelectorAll('.story-img-content, .story-video-content').forEach(media => media.remove());
   },
 
   renderCurrentStory() {
@@ -288,7 +295,7 @@ const Stories = {
     const isOwn = group.user_id === currentUser.id;
 
     // Header info
-    this.elements.authorAvatar.src = API.resolveUrl(group.avatar_url) || `https://api.dicebear.com/7.x/initials/svg?seed=${group.username}`;
+    this.elements.authorAvatar.src = AppUI.avatarUrl(group.avatar_url,group.display_name || group.username);
     this.elements.authorName.textContent = group.display_name || group.username;
     this.elements.timeAgo.textContent = Utils.formatLastSeen(false, story.created_at);
 
@@ -311,7 +318,7 @@ const Stories = {
       this.elements.mediaStage.appendChild(video);
     } else {
       const img = document.createElement('img');
-      img.src = mediaUrl;
+      img.src = mediaUrl; img.alt = story.caption || `Story by ${group.display_name || group.username}`;
       img.className = 'story-img-content';
       this.elements.mediaStage.appendChild(img);
     }
@@ -450,9 +457,9 @@ const Stories = {
       viewers.forEach(v => {
         const item = document.createElement('div');
         item.className = 'drawer-viewer-item';
-        const avatar = API.resolveUrl(v.viewer_avatar) || `https://api.dicebear.com/7.x/initials/svg?seed=${v.viewer_username}`;
+        const avatar = AppUI.avatarUrl(v.viewer_avatar,v.viewer_username);
         item.innerHTML = `
-          <img src="${avatar}" class="user-avatar-sm" />
+          <img src="${Utils.escapeHTML(avatar)}" class="user-avatar-sm" />
           <div style="flex:1;">
             <div style="font-weight:600; font-size:0.875rem;">${Utils.escapeHTML(v.viewer_name || v.viewer_username)}</div>
             <div style="font-size:0.75rem; color:var(--text-muted);">${Utils.formatLastSeen(false, v.viewed_at)}</div>

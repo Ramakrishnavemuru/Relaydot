@@ -3,24 +3,26 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#5b55d6">
   <title>Relay — Messages</title>
-  <script src="js/icons.js"></script>
-  <script src="js/ui.js"></script>
-  <link rel="stylesheet" href="css/global.css">
-  <link rel="stylesheet" href="css/chat.css">
-  <link rel="stylesheet" href="css/profile.css">
-  <link rel="stylesheet" href="css/calls.css">
-  <link rel="stylesheet" href="css/stories.css">
-  <link rel="stylesheet" href="css/responsive.css">
+  <script src="js/icons.js?v=20261003-final"></script>
+  <script src="js/ui.js?v=20261003-final"></script>
+  <link rel="stylesheet" href="css/global.css?v=20261003-final">
+  <link rel="stylesheet" href="css/chat.css?v=20261003-final">
+  <link rel="stylesheet" href="css/profile.css?v=20261003-final">
+  <link rel="stylesheet" href="css/calls.css?v=20261003-final">
+  <link rel="stylesheet" href="css/stories.css?v=20261003-final">
+  <link rel="stylesheet" href="css/responsive.css?v=20261003-final">
 </head>
-<body>
+<body class="messaging-page">
+  <a class="skip-link" href="#message-input">Skip to message composer</a>
   <div class="chat-app-container">
     
     <nav class="app-rail" aria-label="Main navigation">
       <a href="chat.html" class="brand-mark" title="Relay home" aria-label="Relay home"><span data-icon="messages"></span></a>
       <div class="rail-links">
         <button class="rail-button active" id="nav-messages" title="Messages" aria-label="Messages" aria-current="page"><span data-icon="message"></span><span>Chats</span></button>
-        <button class="rail-button" id="nav-stories" title="Stories" aria-label="Stories"><span data-icon="circle"></span><span>Stories</span></button>
+        <button class="rail-button" aria-pressed="false" id="nav-stories" title="Stories" aria-label="Stories"><span data-icon="circle"></span><span>Stories</span></button>
         <button class="rail-button" id="btn-new-group" title="New group" aria-label="New group"><span data-icon="users"></span><span>Groups</span></button>
       </div>
       <div class="rail-bottom">
@@ -35,14 +37,16 @@
     <aside class="chat-sidebar" aria-label="Conversations">
       <div class="sidebar-brand"><span>relay<span class="brand-period">.</span></span><span class="workspace-label">YOUR SPACE TO CONNECT</span></div>
       <div class="sidebar-header">
-        <div><h1>Messages <span id="conversation-count" class="count-label">0</span></h1><p>Good conversations start here.</p></div>
-        <button id="btn-new-chat" class="icon-btn compose-button" title="New conversation"><span data-icon="compose"></span></button>
+        <div class="sidebar-heading"><h1>Inbox <span id="conversation-count" class="count-label">0</span></h1><p>Good conversations start here.</p></div>
+        <button id="btn-global-search" class="icon-btn" title="Search people and messages"><span data-icon="search"></span></button><button id="btn-new-chat" class="icon-btn compose-button" title="New conversation"><span data-icon="compose"></span></button>
       </div>
-      <div class="sidebar-search"><div class="search-input-wrap"><span class="search-icon" data-icon="search"></span><input type="search" id="conv-search-input" class="form-input" placeholder="Search conversations" aria-label="Search conversations" /><kbd>⌘ K</kbd></div></div>
+      <div class="sidebar-search"><div class="search-input-wrap"><span class="search-icon" data-icon="search"></span><input type="search" id="conv-search-input" class="form-input" placeholder="Search conversations" aria-label="Search conversations" /><kbd>⌘ K</kbd><button id="btn-clear-conversation-search" class="icon-btn clear-search hidden" aria-label="Clear conversation search"><span data-icon="x"></span></button></div></div>
       <nav class="chat-filters" aria-label="Filter conversations">
         <button class="chat-filter active" data-filter="all" aria-pressed="true">All chats</button>
         <button class="chat-filter" data-filter="unread" aria-pressed="false">Unread <span id="unread-count"></span></button>
         <button class="chat-filter" data-filter="groups" aria-pressed="false">Groups</button>
+        <button class="chat-filter icon-filter" data-filter="favorites" aria-pressed="false" aria-label="Favorites" title="Favorites"><span data-icon="star"></span></button>
+        <button class="chat-filter icon-filter" data-filter="archived" aria-pressed="false" aria-label="Archived" title="Archived"><span data-icon="archive"></span></button>
       </nav>
       <!-- 24-Hour Stories Carousel Tray -->
       <div id="stories-tray-container" class="stories-tray-container hidden">
@@ -57,7 +61,7 @@
 
       <!-- Conversations List -->
       <div id="conversations-list" class="conversations-list">
-        <!-- Rendered dynamically -->
+        <div class="skeleton-row" aria-label="Loading conversations"></div><div class="skeleton-row"></div><div class="skeleton-row"></div>
       </div>
       <div class="sidebar-footer"><span class="connection-dot"></span><span id="connection-label" role="status">Connecting…</span><span id="my-name" class="truncate">Your workspace</span></div>
     </aside>
@@ -67,9 +71,9 @@
       
       <!-- Empty Chat State (No conversation selected) -->
       <div id="empty-chat-state" class="empty-chat-state">
-        <div class="empty-topline"><span>Your everyday conversations, beautifully connected.</span><span data-icon="messages"></span></div>
+        <div class="empty-topline"><span>A space for better conversations.</span><span data-icon="messages"></span></div>
         <div class="empty-content"><div class="empty-illustration" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="illustration-bubble bubble-back"><span></span><span></span><span></span></div><div class="illustration-bubble bubble-front"><span data-icon="message"></span></div><i class="orbit-dot dot-one"></i><i class="orbit-dot dot-two"></i></div>
-        <span class="eyebrow">A LITTLE CLOSER, EVERY DAY</span><h2 class="empty-state-title">Good things start<br>with a conversation.</h2><p class="empty-state-desc">Your people. Your ideas. All in one place.<br>Pick a chat or start something new.</p><button id="btn-empty-new-chat" class="btn btn-primary"><span data-icon="plus"></span>Start a conversation</button><span class="empty-shortcut">Find your next conversation <kbd>⌘ K</kbd></span></div>
+        <span class="eyebrow">A LITTLE CLOSER, EVERY DAY</span><h2 class="empty-state-title">Your messages,<br>all in one place.</h2><p class="empty-state-desc">A little less distance. A little more together.<br>Select a conversation or say your first hello.</p><button id="btn-empty-new-chat" class="btn btn-primary"><span data-icon="plus"></span>Start a conversation</button><span class="empty-shortcut">Find your next conversation <kbd>⌘ K</kbd></span></div>
         <div class="empty-bottomline"><span data-icon="message"></span>A calmer place to keep in touch.</div>
       </div>
 
@@ -93,17 +97,19 @@
             <!-- Voice and Video Call Triggers (Active for direct chats) -->
             <button id="btn-voice-call" class="icon-btn hidden" title="Voice Call"><span data-icon="phone"></span></button>
             <button id="btn-video-call" class="icon-btn hidden" title="Video Call"><span data-icon="video"></span></button>
-            <button id="btn-details" class="icon-btn" title="Conversation details"><span data-icon="info"></span></button>
-            <button id="btn-search-messages" class="icon-btn" title="Search in messages"><span data-icon="search"></span></button>
+            <button id="btn-details" class="icon-btn" title="Conversation details" aria-expanded="false" aria-controls="modal-group-info"><span data-icon="info"></span></button>
+            <button id="btn-search-messages" class="icon-btn" title="Search in messages"><span data-icon="search"></span></button><button id="btn-chat-options" class="icon-btn" title="Conversation options" aria-haspopup="menu" aria-expanded="false"><span data-icon="more"></span></button>
           </div>
         </header>
 
-        <div id="connection-banner" class="connection-banner hidden" role="status">Connection interrupted. Reconnecting… <button id="btn-reconnect" class="text-button">Retry now</button></div>
+        <div id="connection-banner" class="connection-banner hidden" role="status"><span data-icon="wifi-off"></span><span id="connection-message">Connection interrupted. Reconnecting…</span> <button id="btn-reconnect" class="text-button">Retry now</button></div>
+<div id="history-context" class="connection-banner hidden"><span>Viewing a search result</span><button id="btn-history-latest" class="text-button">Back to latest</button></div>
         <!-- Message History Feed -->
         <div id="messages-container" class="messages-container">
           <button id="btn-load-earlier" class="load-earlier hidden">Load earlier messages</button><div id="messages-list" role="log" aria-label="Messages" aria-live="polite"></div>
         </div>
 
+<button id="btn-jump-latest" class="jump-latest hidden"><span data-icon="chevron-down"></span>New messages</button>
         <!-- Ephemeral Typing Indicator -->
         <div id="typing-indicator" class="typing-indicator-bar hidden">
           <div class="typing-dots">
@@ -122,7 +128,7 @@
               <span class="banner-author">Replying to <span id="reply-author">User</span></span>
               <span id="reply-content" class="banner-text">Original message snippet</span>
             </div>
-            <button id="btn-cancel-reply" class="icon-btn" style="width:24px; height:24px;"><span data-icon="x"></span></button>
+            <button id="btn-cancel-reply" class="icon-btn" title="Cancel reply" style="width:24px; height:24px;"><span data-icon="x"></span></button>
           </div>
 
           <!-- Edit Preview Banner -->
@@ -131,7 +137,7 @@
               <span class="banner-author">Editing Message</span>
               <span id="edit-content" class="banner-text">Original text</span>
             </div>
-            <button id="btn-cancel-edit" class="icon-btn" style="width:24px; height:24px;"><span data-icon="x"></span></button>
+            <button id="btn-cancel-edit" class="icon-btn" title="Cancel editing" style="width:24px; height:24px;"><span data-icon="x"></span></button>
           </div>
 
           <!-- Pending Attachment Preview Chips -->
@@ -139,10 +145,11 @@
             <div id="attachment-previews" style="display: flex; gap: 0.5rem; flex-wrap: wrap;"></div>
           </div>
 
+<div id="upload-status" class="upload-status hidden" role="status"><span class="spinner"></span>Uploading your file…</div>
           <!-- Input Controls -->
           <div class="chat-input-controls">
             <!-- Hidden File Input -->
-            <input type="file" id="file-input" class="hidden" accept="image/*,.pdf,.doc,.docx,.txt,.zip" />
+            <input type="file" id="file-input" class="hidden" accept="image/*,.pdf,.doc,.docx,.txt,.zip,.mp3,.mp4" multiple />
             <button id="btn-attachment" class="icon-btn" title="Attach file or image"><span data-icon="paperclip"></span></button>
 
             <!-- Emoji Picker Button & Popup -->
@@ -168,13 +175,14 @@
               class="message-textarea" 
               placeholder="Write a message…"
               aria-label="Message" 
+              maxlength="10000"
               rows="1"
             ></textarea>
 
             <!-- Send Button -->
-            <button id="btn-send-message" class="btn-send" title="Send message"><span data-icon="send"></span></button>
+            <button id="btn-send-message" class="btn-send" title="Send message" disabled><span data-icon="send"></span></button>
           </div>
-          <div class="composer-caption">A little thought goes a long way.<span>Enter to send · Shift + Enter for a new line</span></div>
+          <div class="composer-caption">Make room for a good conversation.<span>Enter to send · Shift + Enter for a new line</span></div>
         </footer>
 
       </div>
@@ -249,8 +257,8 @@
 
       <!-- Media Stage -->
       <div id="story-media-stage" class="story-media-stage">
-        <div id="story-tap-left" class="story-tap-zone story-tap-left"></div>
-        <div id="story-tap-right" class="story-tap-zone story-tap-right"></div>
+        <button id="story-tap-left" class="story-tap-zone story-tap-left" aria-label="Previous story"></button>
+        <button id="story-tap-right" class="story-tap-zone story-tap-right" aria-label="Next story"></button>
       </div>
 
       <!-- Story Caption -->
@@ -318,7 +326,7 @@
           <span class="search-icon"><span data-icon="search"></span></span>
           <input type="text" id="search-users-input" class="form-input" placeholder="Search by username or email..." />
         </div>
-        <div id="user-search-results" class="user-search-results" style="max-height: 320px; overflow-y: auto;">
+        <div id="user-search-results" class="user-search-results" style="max-height: 400px; overflow-y: auto;">
           <div class="empty-list-notice">Type to search users</div>
         </div>
       </div>
@@ -335,11 +343,11 @@
       <div class="modal-body">
         <div class="form-group">
           <label class="form-label">Group Name</label>
-          <input type="text" id="new-group-name" class="form-input" placeholder="e.g. CSE 2027" required />
+          <input type="text" id="new-group-name" class="form-input" placeholder="e.g. Design team" required />
         </div>
         <div class="form-group">
           <label class="form-label">Description (Optional)</label>
-          <input type="text" id="new-group-desc" class="form-input" placeholder="e.g. Batch Study & Project Group" />
+          <input type="text" id="new-group-desc" class="form-input" placeholder="What brings your group together?" />
         </div>
         <div class="form-group">
           <label class="form-label">Select Initial Members</label>
@@ -359,15 +367,16 @@
   <div id="modal-search-messages" class="modal-overlay">
     <div class="modal-card">
       <div class="modal-header">
-        <h3 class="modal-title">Search Messages</h3>
+        <h3 id="search-dialog-title" class="modal-title">Find a conversation</h3>
         <button class="icon-btn modal-close"><span data-icon="x"></span></button>
       </div>
       <div class="modal-body">
         <div class="search-input-wrap" style="margin-bottom: 1rem;">
           <span class="search-icon"><span data-icon="search"></span></span>
-          <input type="text" id="search-query-input" class="form-input" placeholder="Search keywords in all chats..." />
+          <input type="text" id="search-query-input" class="form-input" placeholder="Search people, chats, or messages…" aria-label="Search people, chats, or messages" /><button id="btn-clear-message-search" class="icon-btn clear-search hidden" aria-label="Clear search"><span data-icon="x"></span></button>
         </div>
-        <div id="search-messages-results" style="max-height: 320px; overflow-y: auto;">
+        <div id="search-type-tabs" class="search-type-tabs" aria-label="Search categories"><button class="chat-filter active" data-search-type="chats" aria-pressed="true">Chats</button><button class="chat-filter" data-search-type="contacts" aria-pressed="false">People</button><button class="chat-filter" data-search-type="messages" aria-pressed="false">Messages</button></div>
+        <div id="search-messages-results" style="max-height: 400px; overflow-y: auto;">
           <div class="empty-list-notice">Type a keyword to search</div>
         </div>
       </div>
@@ -378,24 +387,26 @@
   <div id="modal-group-info" class="modal-overlay details-panel">
     <div class="modal-card">
       <div class="modal-header">
-        <h3 class="modal-title">Conversation Details</h3>
+        <h3 class="modal-title">Conversation details</h3>
         <button class="icon-btn modal-close"><span data-icon="x"></span></button>
       </div>
       <div class="modal-body" style="text-align: center;">
         <img id="group-info-avatar" src="" class="avatar-preview-img" style="margin: 0 auto 0.75rem auto;" />
         <h4 id="group-info-name" style="font-size: 1.15rem; font-weight: 600;">Name</h4>
-        <p id="group-info-desc" style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1.5rem;">Description</p>
+        <p id="group-info-handle" class="details-handle"></p><p id="group-info-desc" style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1.5rem;">Description</p>
 
-        <div class="details-section"><h5>Shared in this conversation</h5><div id="shared-content-list" class="shared-content-list"></div><p class="details-caption">From loaded message history</p></div>
+        <div class="details-quick-actions"><button id="btn-detail-favorite" aria-pressed="false"></button><button id="btn-detail-mute" aria-pressed="false"></button></div><p class="details-caption">Preferences are saved on this browser</p>
+        <button id="btn-edit-group" class="btn btn-secondary btn-sm hidden"><span data-icon="edit"></span>Edit group</button>
+        <div class="details-section"><h5>Shared with you</h5><div class="shared-tabs"><button data-shared-tab="media" aria-pressed="true" class="active">Media <span>0</span></button><button data-shared-tab="files" aria-pressed="false">Files <span>0</span></button><button data-shared-tab="links" aria-pressed="false">Links <span>0</span></button></div><div id="shared-content-list" class="shared-content-list"></div><p class="details-caption">From loaded message history</p></div>
         <!-- Members section for groups -->
         <div id="group-members-section" class="hidden" style="text-align: left;">
-          <h5 style="font-size: 0.9rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--text-secondary);">Group Members</h5>
+          <h5 style="font-size: 0.9rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--text-secondary);">Members <button id="btn-add-group-member" class="icon-btn hidden" title="Add member"><span data-icon="plus"></span></button></h5>
           <div id="group-members-list" class="members-list"></div>
         </div>
       </div>
       <div class="modal-footer" style="justify-content: space-between;">
-        <button id="btn-block-contact" class="btn btn-danger hidden">Block User</button>
-        <button id="btn-leave-group" class="btn btn-danger hidden">Leave Group</button>
+        <button id="btn-block-contact" class="btn btn-danger hidden"><span data-icon="shield"></span>Block contact</button>
+        <button id="btn-leave-group" class="btn btn-danger hidden"><span data-icon="logout"></span>Leave group</button>
         <button class="btn btn-secondary modal-close">Close</button>
       </div>
     </div>
@@ -473,13 +484,14 @@
               <div class="switch-group">
                 <div class="switch-label-wrap">
                   <span class="switch-title">Read Receipts</span>
-                  <span class="switch-desc">Show blue checkmarks when you have read messages</span>
+                  <span class="switch-desc">Let people know when you have read messages</span>
                 </div>
                 <label class="switch">
                   <input type="checkbox" id="settings-show-read" />
                   <span class="slider"></span>
                 </label>
               </div>
+<div class="details-section"><h5>Blocked contacts</h5><div id="blocked-users-list"></div></div>
               <button id="btn-save-privacy" class="btn btn-primary btn-sm" style="margin-top: 1rem;">Save Privacy</button>
             </div>
 
@@ -514,7 +526,7 @@
               <!-- Section 1: Active Sessions & Devices (Telegram-style) -->
               <div class="security-card">
                 <div class="security-card-header">
-                  <span class="security-card-title">💻 Active Sessions & Devices</span>
+                  <span class="security-card-title"><span data-icon="monitor"></span>Active devices</span>
                   <button type="button" id="btn-terminate-other-sessions" class="btn btn-sm btn-secondary" style="font-size: 0.75rem;">
                     Terminate Others
                   </button>
@@ -659,20 +671,26 @@
     </div>
   </div>
 
+
+  <div id="modal-forward" class="modal-overlay"><div class="modal-card"><div class="modal-header"><h2 class="modal-title">Forward message</h2><button class="icon-btn modal-close" aria-label="Close forward dialog"><span data-icon="x"></span></button></div><div class="modal-body"><p class="settings-description">Choose a conversation to share this message with.</p><div id="forward-conversations"></div></div></div></div>
+  <div id="modal-edit-group" class="modal-overlay"><form class="modal-card" id="edit-group-form"><div class="modal-header"><h2 class="modal-title">Edit group</h2><button type="button" class="icon-btn modal-close"><span data-icon="x"></span></button></div><div class="modal-body"><div class="form-group"><label for="edit-group-name" class="form-label">Group name</label><input id="edit-group-name" class="form-input" required maxlength="100" /></div><div class="form-group"><label for="edit-group-description" class="form-label">Description</label><textarea id="edit-group-description" class="form-textarea" rows="3"></textarea></div></div><div class="modal-footer"><button type="button" class="btn btn-secondary modal-close">Cancel</button><button id="btn-save-group" class="btn btn-primary" type="submit">Save changes</button></div></form></div>
+  <div id="modal-add-member" class="modal-overlay"><div class="modal-card"><div class="modal-header"><h2 class="modal-title">Add a member</h2><button class="icon-btn modal-close"><span data-icon="x"></span></button></div><div class="modal-body"><label for="add-member-search" class="sr-only">Find people</label><input id="add-member-search" type="search" class="form-input" placeholder="Find a person by name or username…" /><div id="add-member-results"></div></div></div></div>
+  <div id="modal-attachment-preview" class="modal-overlay"><div class="modal-card attachment-preview-modal"><div class="modal-header"><h2 id="attachment-preview-title" class="modal-title truncate">Image</h2><button class="icon-btn modal-close" aria-label="Close image preview"><span data-icon="x"></span></button></div><div class="modal-body"><img id="attachment-preview-image" alt="" /></div><div class="modal-footer"><a id="attachment-preview-download" class="btn btn-secondary" target="_blank" rel="noopener noreferrer"><span data-icon="external-link"></span>Open original</a></div></div></div>
+
   <!-- Scripts -->
-  <script src="js/config.js"></script>
-  <script src="js/utils.js"></script>
-  <script src="js/api.js"></script>
-  <script src="js/passkeys.js"></script>
-  <script src="js/auth.js"></script>
-  <script src="js/websocket.js"></script>
-  <script src="js/notifications.js"></script>
-  <script src="js/webrtc.js"></script>
-  <script src="js/calls.js"></script>
-  <script src="js/stories.js"></script>
-  <script src="js/users.js"></script>
-  <script src="js/groups.js"></script>
-  <script src="js/profile.js"></script>
-  <script src="js/chat.js"></script>
+  <script src="js/config.js?v=20261003-final"></script>
+  <script src="js/utils.js?v=20261003-final"></script>
+  <script src="js/api.js?v=20261003-final"></script>
+  <script src="js/passkeys.js?v=20261003-final"></script>
+  <script src="js/auth.js?v=20261003-final"></script>
+  <script src="js/websocket.js?v=20261003-final"></script>
+  <script src="js/notifications.js?v=20261003-final"></script>
+  <script src="js/webrtc.js?v=20261003-final"></script>
+  <script src="js/calls.js?v=20261003-final"></script>
+  <script src="js/stories.js?v=20261003-final"></script>
+  <script src="js/users.js?v=20261003-final"></script>
+  <script src="js/groups.js?v=20261003-final"></script>
+  <script src="js/profile.js?v=20261003-final"></script>
+  <script src="js/chat.js?v=20261003-final"></script>
 </body>
 </html>

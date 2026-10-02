@@ -6,8 +6,10 @@
   <meta name="theme-color" content="#f7f7f5">
   <meta name="description" content="Relay brings your conversations together. Connect with your people through direct messages, groups, and shared files.">
   <title>Sign in · Relay</title>
-  <link rel="stylesheet" href="css/global.css">
-  <link rel="stylesheet" href="css/auth.css">
+  <link rel="stylesheet" href="css/global.css?v=20261003-final">
+  <link rel="stylesheet" href="css/auth.css?v=20261003-final">
+  <script src="js/icons.js?v=20261003-final"></script>
+  <script src="js/ui.js?v=20261003-final"></script>
 </head>
 <body class="auth-wrapper">
   <main class="auth-shell">
@@ -61,7 +63,7 @@
             </div>
           </div>
           <div class="auth-links">
-            <label class="remember-device"><input type="checkbox" id="remember-me" checked /><span>Remember this device</span></label>
+            <span class="account-help">Sign-in is saved on this browser.</span>
             <a href="#" id="btn-forgot-pwd" class="auth-link">Forgot password?</a>
           </div>
           <button type="submit" id="btn-pwd-submit" class="btn btn-primary auth-btn-block">Sign in</button>
@@ -84,7 +86,7 @@
         </form>
         <div id="login-panel-passkey" class="auth-form hidden" role="tabpanel" aria-labelledby="tab-passkey">
           <div class="passkey-hero-box">
-            <span class="passkey-icon-large"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="8" cy="15" r="5" stroke="currentColor" stroke-width="1.8"/><path d="m11.5 11.5 9-9m-4 4 3 3m-6-1 3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <span class="passkey-icon-large" data-icon="key" aria-hidden="true"></span>
             <h3>Your device. Your key.</h3>
             <p>Use Face ID, Touch ID, Windows Hello, or your security key to sign in.</p>
           </div>
@@ -148,12 +150,11 @@
       </div>
     </div>
   </div>
-  <script src="js/config.js"></script>
-  <script src="js/utils.js"></script>
-  <script src="js/ui.js"></script>
-  <script src="js/api.js"></script>
-  <script src="js/passkeys.js"></script>
-  <script src="js/auth.js"></script>
+  <script src="js/config.js?v=20261003-final"></script>
+  <script src="js/utils.js?v=20261003-final"></script>
+  <script src="js/api.js?v=20261003-final"></script>
+  <script src="js/passkeys.js?v=20261003-final"></script>
+  <script src="js/auth.js?v=20261003-final"></script>
   <script>
     // Redirect if already authenticated
     Auth.redirectIfAuthenticated();

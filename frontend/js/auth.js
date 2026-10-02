@@ -193,7 +193,7 @@ const Auth = {
   },
 
   fetchMyProfile: async () => {
-    const user = await API.get('/auth/me');
+    const user = {...Auth.getCurrentUser(), ...await API.get('/auth/me')};
     Auth.setCurrentUser(user);
     return user;
   },

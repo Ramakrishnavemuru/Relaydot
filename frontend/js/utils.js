@@ -8,8 +8,8 @@ const Utils = {
   escapeHTML: (str) => {
     if (!str) return '';
     const div = document.createElement('div');
-    div.innerText = str;
-    return div.innerHTML;
+    div.textContent = String(str);
+    return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   },
 
 // Parse ISO datetime strings ensuring UTC interpretation
@@ -89,6 +89,7 @@ const Utils = {
 
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
+    toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
     
     // Icon based on type
     const icons = {
@@ -99,8 +100,9 @@ const Utils = {
     };
     
     toast.innerHTML = `
-      <span class="toast-icon">${icons[type] || 'ℹ'}</span>
+      <span class="toast-icon" aria-hidden="true">${window.AppUI ? AppUI.icon(type === 'success' ? 'check' : type === 'info' ? 'info' : 'alert-circle') : icons[type] || 'ℹ'}</span>
       <span class="toast-message">${Utils.escapeHTML(message)}</span>
+      <button class="icon-btn toast-dismiss" aria-label="Dismiss notification">${window.AppUI ? AppUI.icon('x') : '×'}</button>
     `;
 
     container.appendChild(toast);
@@ -137,11 +139,8 @@ const Utils = {
 
   // Format ticks for sent, delivered, read
   renderReceiptTicks: (status) => {
-    if (status === 'READ') {
-      return '<span class="status-ticks ticks-read" title="Read">✓✓</span>';
-    } else if (status === 'DELIVERED') {
-      return '<span class="status-ticks ticks-delivered" title="Delivered">✓✓</span>';
-    }
-    return '<span class="status-ticks ticks-sent" title="Sent">✓</span>';
+    const label = { READ: 'Read', DELIVERED: 'Delivered', SENT: 'Sent', SENDING: 'Sending', FAILED: 'Failed' }[status] || 'Sent';
+    const name = status === 'SENDING' ? 'clock' : status === 'FAILED' ? 'alert-circle' : ['READ','DELIVERED'].includes(status) ? 'check-check' : 'check';
+    return `<span class="status-ticks ticks-${label.toLowerCase()}" title="${label}" aria-label="${label}">${window.AppUI ? AppUI.icon(name) : '✓'}</span>`;
   }
 };

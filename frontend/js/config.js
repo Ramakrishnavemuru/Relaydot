@@ -3,10 +3,10 @@ const isLocalhost = window.location.hostname === 'localhost' || window.location.
 const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
 const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 
-// If opened directly from port 8000, use relative paths; otherwise default to port 8000
-const host = window.location.port === '8000' 
-  ? window.location.host 
-  : `${window.location.hostname || '127.0.0.1'}:8000`;
+// In production (Render, custom domain), use current host. In localhost development, point to backend port 8000.
+const host = isLocalhost 
+  ? (window.location.port === '8000' ? window.location.host : `${window.location.hostname}:8000`)
+  : window.location.host;
 
 const CONFIG = {
   API_BASE_URL: `${protocol}//${host}/api`,

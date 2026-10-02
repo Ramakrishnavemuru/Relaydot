@@ -5,10 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#5b55d6">
   <title>Settings · Relay</title>
-  <script src="js/ui.js"></script>
-  <link rel="stylesheet" href="css/global.css">
-  <link rel="stylesheet" href="css/responsive.css">
-  <link rel="stylesheet" href="css/profile.css">
+  <link rel="stylesheet" href="css/global.css?v=20261003-final">
+  <link rel="stylesheet" href="css/responsive.css?v=20261003-final">
+  <link rel="stylesheet" href="css/profile.css?v=20261003-final">
+  <script src="js/icons.js?v=20261003-final"></script>
+  <script src="js/ui.js?v=20261003-final"></script>
 </head>
 <body class="account-page">
   <a class="account-skip-link" href="#account-main">Skip to content</a>
@@ -33,6 +34,7 @@
             <div class="switch-group"><div class="switch-label-wrap"><label for="sett-last-seen" class="switch-title">Last seen</label><p id="last-seen-description" class="switch-desc">Let others see when you were last online.</p></div><label class="switch"><input type="checkbox" id="sett-last-seen" aria-describedby="last-seen-description" /><span class="slider" aria-hidden="true"></span></label></div>
             <div class="switch-group"><div class="switch-label-wrap"><label for="sett-online" class="switch-title">Online status</label><p id="online-description" class="switch-desc">Show when you're active on Relay.</p></div><label class="switch"><input type="checkbox" id="sett-online" aria-describedby="online-description" /><span class="slider" aria-hidden="true"></span></label></div>
             <div class="switch-group"><div class="switch-label-wrap"><label for="sett-read" class="switch-title">Read receipts</label><p id="read-description" class="switch-desc">Let people know when you've read their messages.</p></div><label class="switch"><input type="checkbox" id="sett-read" aria-describedby="read-description" /><span class="slider" aria-hidden="true"></span></label></div>
+            <div class="security-card"><h3 class="settings-subtitle">Blocked contacts</h3><p class="account-help">Review the people you have blocked and manage access to direct messages.</p><a class="btn btn-secondary" href="chat.html?settings=privacy">Manage blocked contacts</a></div>
             <div class="settings-pane-footer"><button type="button" id="btn-save-privacy-page" class="btn btn-primary">Save privacy settings</button></div>
           </section>
           <section id="pane-notifications" class="settings-pane" role="tabpanel" aria-labelledby="tab-notifications" tabindex="0" hidden>
@@ -52,6 +54,7 @@
           </section>
           <section id="pane-security" class="settings-pane" role="tabpanel" aria-labelledby="tab-security" tabindex="0" hidden>
             <div class="account-section-heading"><h2>Security</h2><p>Keep your account and conversations protected.</p></div>
+            <div class="security-card"><h3 class="settings-subtitle">Devices and sign-in protection</h3><p class="account-help">Manage your active sessions, two-factor authentication and passkeys.</p><a class="btn btn-secondary" href="chat.html?settings=security">Manage account security</a></div>
             <form id="password-settings-form" class="settings-password-form">
               <h3 class="settings-subtitle">Change password</h3>
               <div class="form-group"><label for="sett-cur-pwd" class="form-label">Current password</label><input type="password" id="sett-cur-pwd" class="form-input" autocomplete="current-password" required /></div>
@@ -65,20 +68,28 @@
     </div>
     <p class="account-footer-note">A space for better conversations.</p>
   </main>
-  <script src="js/config.js"></script>
-  <script src="js/utils.js"></script>
-  <script src="js/api.js"></script>
-  <script src="js/auth.js"></script>
-  <script src="js/notifications.js"></script>
-  <script src="js/profile.js"></script>
+  <script src="js/config.js?v=20261003-final"></script>
+  <script src="js/utils.js?v=20261003-final"></script>
+  <script src="js/api.js?v=20261003-final"></script>
+  <script src="js/auth.js?v=20261003-final"></script>
+  <script src="js/notifications.js?v=20261003-final"></script>
+  <script src="js/profile.js?v=20261003-final"></script>
   <script>
     (async () => {
       if (!Auth.requireAuth()) return;
       let user = Auth.getCurrentUser();
-      if (!user) {
-        try { user = await Auth.fetchMyProfile(); }
-        catch (err) { Utils.showToast('Your settings could not be loaded. Please try again.', 'error'); return; }
+      document.querySelector('.account-main').setAttribute('aria-busy','true');
+      document.querySelector('.account-main').inert = true;
+      try { user = await Auth.fetchMyProfile(); }
+      catch {
+        if (!user || !Auth.isAuthenticated()) { Utils.showToast('Your settings couldn’t load. Reload to try again.', 'error'); return; }
+        Utils.showToast('Showing your saved settings. Your account couldn’t refresh.', 'warning');
       }
+      finally { document.querySelector('.account-main').setAttribute('aria-busy','false'); document.querySelector('.account-main').inert = false; }
+      const currentPasswordInput = document.getElementById('sett-cur-pwd');
+      currentPasswordInput.required = user.has_password !== false;
+      currentPasswordInput.closest('.form-group').hidden = user.has_password === false;
+      if (user.has_password === false) document.querySelector('.settings-password-form h3').textContent = 'Set a password';
       const tabs = Array.from(document.querySelectorAll('.settings-tab-btn'));
       const panes = document.querySelectorAll('.settings-pane');
       const selectTab = (tab) => {

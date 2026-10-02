@@ -64,5 +64,20 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
+# Auto-detect Render environment for WebAuthn, CORS, and Cookies
+render_host = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
+render_url = os.environ.get("RENDER_EXTERNAL_URL")
+
+if render_host and settings.RP_ID == "localhost":
+    settings.RP_ID = render_host
+
+if render_url and settings.RP_ORIGIN == "http://localhost:8000":
+    settings.RP_ORIGIN = render_url
+    if render_url not in settings.ALLOWED_ORIGINS:
+        settings.ALLOWED_ORIGINS.append(render_url)
+
+if (os.environ.get("RENDER") or settings.APP_ENV == "production") and "COOKIE_SECURE" not in os.environ:
+    settings.COOKIE_SECURE = True
+
 # Ensure local upload directory exists
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
