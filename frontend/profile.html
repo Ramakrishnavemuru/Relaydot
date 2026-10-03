@@ -22,10 +22,13 @@
     <nav class="account-page-nav" aria-label="Account pages"><a class="active" href="profile.html" aria-current="page"><span data-icon="user" aria-hidden="true"></span>Profile</a><a href="settings.html"><span data-icon="settings" aria-hidden="true"></span>Settings</a></nav>
     <form id="profile-page-form" class="profile-page-grid">
       <aside class="account-card profile-summary">
+        <img id="profile-page-cover" class="profile-cover-preview" alt="Profile cover preview" hidden>
         <div class="profile-avatar-frame"><img id="profile-page-avatar" class="avatar-preview-img" alt="Your profile picture" /></div>
         <h2 id="profile-summary-name">Your profile</h2><p id="profile-summary-username" class="profile-summary-username"></p>
         <label class="btn btn-secondary avatar-upload-button" for="profile-page-file-input"><span data-icon="user" aria-hidden="true"></span><span id="avatar-upload-label">Change photo</span></label>
         <input type="file" id="profile-page-file-input" class="avatar-file-input" accept="image/*" />
+        <label class="btn btn-secondary avatar-upload-button" for="profile-page-cover-input"><span data-icon="image" aria-hidden="true"></span>Change cover</label>
+        <input type="file" id="profile-page-cover-input" class="avatar-file-input" accept="image/png,image/jpeg,image/webp" />
         <p class="account-help">Choose a photo that helps people recognize you.</p>
         <div class="profile-visibility-note"><span data-icon="user" aria-hidden="true"></span><p>Your photo, name and bio are visible to people you chat with.</p></div>
       </aside>
@@ -34,6 +37,7 @@
         <div class="account-card-body">
           <div class="form-group"><label for="profile-page-display-name" class="form-label">Display name</label><input type="text" id="profile-page-display-name" class="form-input" placeholder="Your name" autocomplete="name" maxlength="100" /><p class="account-help">This is the name people will see in chats.</p></div>
           <div class="form-group"><label for="profile-page-bio" class="form-label">Bio <span class="field-optional">Optional</span></label><textarea id="profile-page-bio" class="form-textarea" placeholder="A little about yourself…" rows="4"></textarea></div>
+          <div class="form-group"><label for="profile-page-website" class="form-label">Website <span class="field-optional">Optional</span></label><input id="profile-page-website" type="url" class="form-input" placeholder="https://example.com" maxlength="500"></div>
           <div class="account-form-divider"></div>
           <div class="account-section-heading"><h3>Account information</h3><p>Your sign-in details are shown below.</p></div>
           <div class="account-fields-grid">
@@ -71,6 +75,11 @@
       const saveBtn = document.getElementById('btn-save-profile-page');
       const status = document.getElementById('profile-save-status');
       let currentAvatarUrl = user.avatar_url;
+      let currentCoverUrl = user.cover_url;
+      const coverInput = document.getElementById('profile-page-cover-input');
+      const coverPreview = document.getElementById('profile-page-cover');
+      if (currentCoverUrl) { coverPreview.src = API.resolveUrl(currentCoverUrl); coverPreview.hidden = false; }
+      document.getElementById('profile-page-website').value = user.website || '';
       avatarEl.src = AppUI.avatarUrl(user.avatar_url,user.display_name || user.username);
       document.getElementById('profile-page-username').value = '@' + user.username;
       document.getElementById('profile-page-email').value = user.email || '';
@@ -96,6 +105,13 @@
         } catch (err) { status.textContent = 'Your photo could not be uploaded. Please try again.'; }
         finally { saveBtn.disabled = false; fileInput.disabled = false; fileInput.value = ''; document.getElementById('avatar-upload-label').textContent = 'Change photo'; }
       });
+      coverInput.addEventListener('change', async e => {
+        const file = e.target.files?.[0]; if (!file) return;
+        if (!['image/png','image/jpeg','image/webp'].includes(file.type)) { Utils.showToast('Choose a PNG, JPEG, or WebP image.', 'error'); return; }
+        try { currentCoverUrl = await ProfileManager.uploadAvatar(file); coverPreview.src = API.resolveUrl(currentCoverUrl); coverPreview.hidden = false; status.textContent = 'Cover uploaded. Save your changes to apply it.'; }
+        catch { status.textContent = 'The cover could not be uploaded.'; }
+        finally { coverInput.value = ''; }
+      });
       document.getElementById('profile-page-form').addEventListener('submit', async (event) => {
         event.preventDefault();
         saveBtn.disabled = true;
@@ -103,9 +119,9 @@
         saveBtn.textContent = 'Saving…';
         status.textContent = 'Saving your profile…';
         try {
-          await ProfileManager.updateProfile(displayNameEl.value.trim(), bioEl.value.trim(), currentAvatarUrl);
+          await ProfileManager.updateProfile(displayNameEl.value.trim(), bioEl.value.trim(), currentAvatarUrl, currentCoverUrl, document.getElementById('profile-page-website').value.trim());
           status.textContent = 'Your profile has been saved.';
-          setTimeout(() => window.location.href = 'chat.html', 700);
+          setTimeout(() => window.location.href = 'social.html?view=profile', 700);
         } catch (err) { status.textContent = 'Changes could not be saved. Please try again.'; saveBtn.disabled = false; fileInput.disabled = false; saveBtn.textContent = 'Save changes'; }
       });
     })();

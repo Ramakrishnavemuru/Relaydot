@@ -265,7 +265,7 @@
           document.getElementById('btn-confirm-otp').classList.add('hidden');
           document.getElementById('post-verify-passkey-box').classList.remove('hidden');
         } else {
-          setTimeout(() => window.location.href = 'chat.html', 700);
+          setTimeout(() => window.location.href = Auth.consumeRedirect(), 700);
         }
       } catch (err) {
         Utils.showToast(err.message, 'error');
@@ -279,14 +279,14 @@
       try {
         await Auth.registerPasskey('My Primary Device');
         Utils.showToast('Passkey created! Redirecting...', 'success');
-        setTimeout(() => window.location.href = 'chat.html', 600);
+        setTimeout(() => window.location.href = Auth.consumeRedirect(), 600);
       } catch (err) {
         Utils.showToast(err.message, 'error');
       }
     });
 
     document.getElementById('btn-skip-passkey').addEventListener('click', () => {
-      window.location.href = 'chat.html';
+      window.location.href = Auth.consumeRedirect();
     });
   
     document.querySelectorAll('[data-password-target]').forEach(button => {

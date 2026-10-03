@@ -200,3 +200,5 @@ body.account-page { height: auto; min-height: 100vh; min-height: 100dvh; width: 
 @media (prefers-reduced-motion: reduce) {
   .slider, .slider:before { transition: none; }
 }
+.profile-cover-preview { display:block; width:100%; height:110px; margin-bottom:16px; border-radius:12px; object-fit:cover; }
+.profile-cover-preview[hidden] { display:none; }

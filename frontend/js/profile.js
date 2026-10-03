@@ -10,12 +10,14 @@ const ProfileManager = {
     }
   },
 
-  updateProfile: async (displayName, bio, avatarUrl) => {
+  updateProfile: async (displayName, bio, avatarUrl, coverUrl, website) => {
     try {
       const updated = await API.put('/users/profile', {
         display_name: displayName,
         bio: bio,
-        avatar_url: avatarUrl
+        avatar_url: avatarUrl,
+        cover_url: coverUrl,
+        website
       });
       Auth.setCurrentUser({...Auth.getCurrentUser(),...updated});
       Utils.showToast('Profile updated successfully!', 'success');
@@ -44,7 +46,7 @@ const ProfileManager = {
 
   uploadAvatar: async (file) => {
     try {
-      if (!file.type.startsWith('image/')) throw new Error('Choose an image for your profile photo.');
+      if (!['image/png','image/jpeg','image/webp','image/gif'].includes(file.type)) throw new Error('Choose a PNG, JPEG, WebP, or GIF image.');
       if (file.size > CONFIG.MAX_FILE_SIZE_MB * 1024 * 1024) throw new Error(`Choose a photo smaller than ${CONFIG.MAX_FILE_SIZE_MB} MB.`);
       const uploadRes = await API.uploadFile(file);
       return uploadRes.file_url;

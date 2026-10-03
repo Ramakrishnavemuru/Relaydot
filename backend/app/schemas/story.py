@@ -1,13 +1,31 @@
 from datetime import datetime
-from typing import Optional, List
-from pydantic import BaseModel, Field, ConfigDict
+from typing import Optional, List, Literal
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 from app.schemas.user import UserPublicResponse
 
 
 class StoryCreate(BaseModel):
     media_url: str
-    media_type: str = "IMAGE"  # IMAGE, VIDEO, TEXT
+    media_type: Literal["IMAGE", "VIDEO", "TEXT"] = "IMAGE"
     caption: Optional[str] = Field(None, max_length=500)
+    visibility: Literal["EVERYONE", "FOLLOWERS", "FRIENDS", "ONLY_ME"] = "EVERYONE"
+
+    @model_validator(mode="after")
+    def valid_media(self):
+        from urllib.parse import urlparse
+        if self.media_type == "TEXT":
+            if not self.caption or not self.caption.strip():
+                raise ValueError("Text stories need content")
+            self.media_url = ""
+            return self
+        parsed = urlparse(self.media_url)
+        extensions = {"IMAGE": ("jpg", "jpeg", "png", "webp", "gif"), "VIDEO": ("mp4",)}
+        extension = parsed.path.rsplit(".", 1)[-1].lower()
+        if extension not in extensions[self.media_type] or not (
+                self.media_url.startswith("/uploads/") or
+                (parsed.scheme == "https" and parsed.hostname == "res.cloudinary.com")):
+            raise ValueError("Choose an uploaded image or video")
+        return self
 
 
 class StoryReplyRequest(BaseModel):
@@ -32,6 +50,7 @@ class StoryResponse(BaseModel):
     media_url: str
     media_type: str
     caption: Optional[str] = None
+    visibility: str = "EVERYONE"
     created_at: str
     expires_at: str
     views_count: int = 0

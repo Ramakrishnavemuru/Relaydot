@@ -192,6 +192,26 @@ class MessageService:
         payload = create_event(EVENT_MESSAGE, response_data)
         await manager.broadcast_to_conversation(conv_id, payload, db=db, exclude_user_id=None)
 
+        # Keep message activity in the same notification inbox as social events.
+        from app.models.social import SocialNotification
+        recipients = db.query(ConversationMember.user_id).filter(
+            ConversationMember.conversation_id == conv_id,
+            ConversationMember.user_id != sender_id).all()
+        for (recipient_id,) in recipients:
+            if UserService.is_blocked(db, sender_id, recipient_id):
+                continue
+            item = SocialNotification(recipient_id=recipient_id, actor_id=sender_id,
+                type="message", entity_type="conversation", entity_id=conv_id)
+            db.add(item)
+            db.flush()
+            await manager.send_to_user(recipient_id, {"event": "social_notification", "data": {
+                "id": item.id, "type": "message", "entity_type": "conversation",
+                "entity_id": conv_id, "read": False,
+                "created_at": item.created_at.isoformat(),
+                "actor": db.get(User, sender_id).to_dict(False)
+            }})
+        db.commit()
+
         return response_data
 
     @staticmethod

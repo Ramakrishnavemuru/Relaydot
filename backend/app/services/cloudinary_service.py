@@ -28,7 +28,7 @@ async def upload_file_service(file: UploadFile) -> Dict[str, Any]:
     Upload a file either to Cloudinary (if configured) or to local storage (fallback).
     Returns dict with file_url, file_name, file_type, file_size, and public_id.
     """
-    original_filename = file.filename or "uploaded_file"
+    original_filename = (file.filename or "uploaded_file").replace("\\", "/").split("/")[-1]
     file_type = file.content_type or "application/octet-stream"
     
     # Read file content to get size and write

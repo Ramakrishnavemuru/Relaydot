@@ -224,6 +224,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
     });
     [CONFIG.EVENTS.CONVERSATION_NEW, CONFIG.EVENTS.CONVERSATION_UPDATE, 'member_joined', 'member_left'].forEach(event => WSClient.on(event, () => loadConversations()));
+    WSClient.on('social_notification', data => {
+      const badge = document.getElementById('chat-social-unread');
+      badge.textContent = Number(badge.textContent || 0) + 1;
+      badge.classList.remove('hidden');
+      if (data.type !== 'message') Utils.showToast('New activity on Relay', 'info');
+    });
+    API.get('/social/notifications', {limit:1}).then(data => {
+      const badge = document.getElementById('chat-social-unread');
+      badge.textContent = data.unread;
+      badge.classList.toggle('hidden', !data.unread);
+    }).catch(() => {});
     WSClient.on('error', () => Utils.showToast('That action could not be completed. Please try again.', 'error'));
   };
 
@@ -242,6 +253,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else closeConversation();
       }
       renderConversationsList();
+      const requestedConversation = Number(new URLSearchParams(location.search).get('conversation'));
+      if (requestedConversation && !activeConversation) {
+        const requested = conversations.find(c => c.id === requestedConversation);
+        if (requested) selectConversation(requested);
+      }
     } catch {
       if (request !== conversationRequest) return;
       elements.conversationsList.innerHTML = '<div class="list-empty"><span data-icon="wifi-off"></span><h3>Conversations couldn’t load</h3><p>Check your connection and try again.</p><button class="btn btn-secondary" id="btn-retry-conversations">Try again</button></div>';
@@ -467,13 +483,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Status receipt ticks (for own messages)
     const receiptHtml = isOwn ? Utils.renderReceiptTicks(msg.status) : '';
 
+    const sharedPost = !isDeleted && typeof msg.content === 'string' && msg.content.match(/^Shared post by ([^\n]+)\n([^\n]*)\n\/post\/(\d+)$/);
+    const messageBody = sharedPost ? `<a class="chat-post-preview" href="social.html?view=post&id=${encodeURIComponent(sharedPost[3])}"><span>${AppUI.icon('messages')} Shared post</span><strong>${Utils.escapeHTML(sharedPost[1])}</strong><small>${Utils.escapeHTML(sharedPost[2])}</small><em>Open post ${AppUI.icon('arrow-right')}</em></a>` : AppUI.linkify(msg.content);
     bubble.innerHTML = `
       ${showAvatar ? `<img src="${Utils.escapeHTML(avatar)}" alt="${Utils.escapeHTML(senderName)}" class="message-sender-avatar" title="${Utils.escapeHTML(senderName)}" />` : ''}
       <div class="message-bubble ${isDeleted ? 'deleted-bubble' : ''}">
         ${showAvatar ? `<div class="message-sender-name">${Utils.escapeHTML(senderName)}</div>` : ''}
         ${replyHtml}
         ${attachmentsHtml}
-        <div class="message-text">${isDeleted ? '<i>This message was deleted</i>' : AppUI.linkify(msg.content)}</div>
+        <div class="message-text">${isDeleted ? '<i>This message was deleted</i>' : messageBody}</div>
         <div class="message-meta">
           ${msg.is_edited && !isDeleted ? '<span class="edited-label">(edited)</span>' : ''}
           <span class="message-time">${timeStr}</span>
@@ -1720,6 +1738,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   Calls.init();
   Stories.init();
   bindUIEvents();
+  document.getElementById('btn-mobile-stories').onclick = () => document.getElementById('nav-stories').click();
+  document.getElementById('btn-mobile-group').onclick = () => document.getElementById('btn-new-group').click();
   loadConversations();
   if (outbox.size) Utils.showToast('Your unsent messages are saved. Open their conversations to retry.', 'info');
   const settingsTab = new URLSearchParams(location.search).get('settings');

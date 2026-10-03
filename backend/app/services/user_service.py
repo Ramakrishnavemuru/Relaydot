@@ -27,6 +27,25 @@ class UserService:
             user.bio = sanitize_text(update_data.bio)
         if update_data.avatar_url is not None:
             user.avatar_url = update_data.avatar_url.strip()
+        if update_data.cover_url is not None:
+            from urllib.parse import urlparse
+            cover = update_data.cover_url.strip()
+            parsed_cover = urlparse(cover)
+            if cover and not (cover.startswith('/uploads/') or
+                    (parsed_cover.scheme == 'https' and parsed_cover.hostname == 'res.cloudinary.com')):
+                raise HTTPException(400, "Cover must be an uploaded image")
+            if cover and parsed_cover.path.rsplit('.', 1)[-1].lower() not in {'png', 'jpg', 'jpeg', 'webp', 'gif'}:
+                raise HTTPException(400, "Cover must be an uploaded image")
+            if any(c in cover for c in "'\"()\\"):
+                raise HTTPException(400, "Invalid cover URL")
+            user.cover_url = cover or None
+        if update_data.website is not None:
+            from urllib.parse import urlparse
+            website = update_data.website.strip()
+            parsed = urlparse(website)
+            if website and (parsed.scheme not in ("http", "https") or not parsed.hostname):
+                raise HTTPException(400, "Website must be a valid http or https URL")
+            user.website = website or None
 
         user.updated_at = datetime.now(timezone.utc)
         db.commit()
@@ -110,6 +129,11 @@ class UserService:
         if not existing:
             block_record = BlockedUser(blocker_id=blocker_id, blocked_id=blocked_id)
             db.add(block_record)
+            from app.models.social import Follow
+            db.query(Follow).filter(or_(
+                and_(Follow.follower_id == blocker_id, Follow.following_id == blocked_id),
+                and_(Follow.follower_id == blocked_id, Follow.following_id == blocker_id)
+            )).delete(synchronize_session=False)
             db.commit()
 
     @staticmethod

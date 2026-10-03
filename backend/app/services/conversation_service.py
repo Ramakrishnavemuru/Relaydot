@@ -111,6 +111,9 @@ class ConversationService:
 
     @staticmethod
     def update_group(db: Session, conversation_id: int, user_id: int, update_data: GroupUpdate) -> Conversation:
+        from app.models.social import Community
+        if db.query(Community.id).filter_by(conversation_id=conversation_id).first():
+            raise HTTPException(403, "Manage community details through the community page")
         conv = ConversationService.get_conversation_or_404(db, conversation_id, user_id)
         if conv.type != "GROUP":
             raise HTTPException(
@@ -144,6 +147,9 @@ class ConversationService:
 
     @staticmethod
     def add_member(db: Session, conversation_id: int, admin_user_id: int, target_user_id: int, role: str = "MEMBER") -> ConversationMember:
+        from app.models.social import Community
+        if db.query(Community.id).filter_by(conversation_id=conversation_id).first():
+            raise HTTPException(403, "Join and manage members through the community page")
         conv = ConversationService.get_conversation_or_404(db, conversation_id, admin_user_id)
         if conv.type != "GROUP":
             raise HTTPException(
@@ -195,6 +201,9 @@ class ConversationService:
 
     @staticmethod
     def remove_member(db: Session, conversation_id: int, requester_id: int, target_user_id: int) -> None:
+        from app.models.social import Community
+        if db.query(Community.id).filter_by(conversation_id=conversation_id).first():
+            raise HTTPException(403, "Leave and manage members through the community page")
         conv = ConversationService.get_conversation_or_404(db, conversation_id, requester_id)
         if conv.type != "GROUP":
             raise HTTPException(

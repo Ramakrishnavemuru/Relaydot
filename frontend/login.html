@@ -240,7 +240,7 @@
         await Auth.verify2FA(active2FATicket, code);
         Utils.showToast('2FA Verified! Redirecting...', 'success');
         Utils.closeModal('modal-2fa-challenge');
-        setTimeout(() => window.location.href = 'chat.html', 500);
+        setTimeout(() => window.location.href = Auth.consumeRedirect(), 500);
       } catch (err) {
         Utils.showToast(err.message, 'error');
       }
@@ -262,7 +262,7 @@
           prompt2FA(res.ticket);
         } else {
           Utils.showToast('Login successful! Redirecting...', 'success');
-          setTimeout(() => window.location.href = 'chat.html', 500);
+          setTimeout(() => window.location.href = Auth.consumeRedirect(), 500);
         }
       } catch (err) {
         Utils.showToast(err.message, 'error');
@@ -326,7 +326,7 @@
           prompt2FA(res.ticket);
         } else {
           Utils.showToast('Sign in successful! Redirecting...', 'success');
-          setTimeout(() => window.location.href = 'chat.html', 500);
+          setTimeout(() => window.location.href = Auth.consumeRedirect(), 500);
         }
       } catch (err) {
         Utils.showToast(err.message, 'error');
@@ -347,7 +347,7 @@
       try {
         await Auth.loginWithPasskey(identifier);
         Utils.showToast('Passkey authenticated! Redirecting...', 'success');
-        setTimeout(() => window.location.href = 'chat.html', 500);
+        setTimeout(() => window.location.href = Auth.consumeRedirect(), 500);
       } catch (err) {
         Utils.showToast(err.message, 'error');
       } finally {

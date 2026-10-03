@@ -19,11 +19,16 @@
   <div class="chat-app-container">
     
     <nav class="app-rail" aria-label="Main navigation">
-      <a href="chat.html" class="brand-mark" title="Relay home" aria-label="Relay home"><span data-icon="messages"></span></a>
+      <a href="social.html" class="brand-mark" title="Relay home" aria-label="Relay home"><span data-icon="messages"></span></a>
       <div class="rail-links">
+        <a class="rail-button" href="social.html" title="Home" aria-label="Home"><span data-icon="circle"></span><span>Home</span></a>
         <button class="rail-button active" id="nav-messages" title="Messages" aria-label="Messages" aria-current="page"><span data-icon="message"></span><span>Chats</span></button>
+        <a class="rail-button rail-mobile-only" href="social.html?compose=1" title="Create post" aria-label="Create post"><span data-icon="plus"></span><span>Create</span></a>
         <button class="rail-button" aria-pressed="false" id="nav-stories" title="Stories" aria-label="Stories"><span data-icon="circle"></span><span>Stories</span></button>
         <button class="rail-button" id="btn-new-group" title="New group" aria-label="New group"><span data-icon="users"></span><span>Groups</span></button>
+        <a class="rail-button" href="social.html?view=communities" title="Communities" aria-label="Communities"><span data-icon="users"></span><span>Spaces</span></a>
+        <a class="rail-button" href="social.html?view=notifications" title="Notifications" aria-label="Notifications"><span data-icon="bell"></span><span>Activity</span><small id="chat-social-unread" class="chat-nav-badge hidden"></small></a>
+        <a class="rail-button rail-mobile-only" href="social.html?view=profile" title="Profile" aria-label="Profile"><span data-icon="user"></span><span>Profile</span></a>
       </div>
       <div class="rail-bottom">
         <button class="icon-btn" data-theme-toggle title="Toggle light or dark theme"><span data-icon="sun"></span></button>
@@ -35,7 +40,7 @@
       </div>
     </nav>
     <aside class="chat-sidebar" aria-label="Conversations">
-      <div class="sidebar-brand"><span>relay<span class="brand-period">.</span></span><span class="workspace-label">YOUR SPACE TO CONNECT</span></div>
+      <div class="sidebar-brand"><span>relay<span class="brand-period">.</span></span><span class="workspace-label">YOUR SPACE TO CONNECT</span><div class="mobile-chat-tools"><button id="btn-mobile-stories" class="icon-btn" title="Stories" aria-label="Stories"><span data-icon="circle"></span></button><button id="btn-mobile-group" class="icon-btn" title="Create group" aria-label="Create group"><span data-icon="users"></span></button></div></div>
       <div class="sidebar-header">
         <div class="sidebar-heading"><h1>Inbox <span id="conversation-count" class="count-label">0</span></h1><p>Good conversations start here.</p></div>
         <button id="btn-global-search" class="icon-btn" title="Search people and messages"><span data-icon="search"></span></button><button id="btn-new-chat" class="icon-btn compose-button" title="New conversation"><span data-icon="compose"></span></button>

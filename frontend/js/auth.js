@@ -201,6 +201,8 @@ const Auth = {
   // Route Guards
   requireAuth: () => {
     if (!Auth.isAuthenticated()) {
+      const path = window.location.pathname + window.location.search;
+      if (/^\/(?:social|chat|profile|settings)\.html(?:\?|$)/.test(path)) sessionStorage.setItem('relay-return-to', path);
       window.location.href = 'login.html';
       return false;
     }
@@ -209,9 +211,15 @@ const Auth = {
 
   redirectIfAuthenticated: () => {
     if (Auth.isAuthenticated()) {
-      window.location.href = 'chat.html';
+      window.location.href = Auth.consumeRedirect();
       return true;
     }
     return false;
+  },
+
+  consumeRedirect: () => {
+    const path = sessionStorage.getItem('relay-return-to');
+    sessionStorage.removeItem('relay-return-to');
+    return path && /^\/(?:social|chat|profile|settings)\.html(?:\?|$)/.test(path) ? path : 'social.html';
   }
 };

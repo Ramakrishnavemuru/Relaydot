@@ -10,6 +10,9 @@ from app.models.session import UserSession
 from app.models.otp import OTPVerification
 from app.models.passkey import Passkey
 from app.models.recovery_code import RecoveryCode
+from app.models.social import (Follow, Community, CommunityMember, Post, PostReaction,
+    Comment, CommentReaction, Bookmark, Hashtag, PostHashtag, PostMention,
+    PollOption, PollVote, SocialNotification, Report)
 
 __all__ = [
     "User",

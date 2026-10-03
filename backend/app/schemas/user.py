@@ -7,6 +7,8 @@ class UserProfileUpdate(BaseModel):
     display_name: Optional[str] = None
     bio: Optional[str] = None
     avatar_url: Optional[str] = None
+    cover_url: Optional[str] = None
+    website: Optional[str] = None
 
 
 class PrivacySettingsUpdate(BaseModel):
@@ -23,6 +25,8 @@ class UserPublicResponse(BaseModel):
     display_name: Optional[str] = None
     avatar_url: Optional[str] = None
     bio: Optional[str] = None
+    cover_url: Optional[str] = None
+    website: Optional[str] = None
     is_online: bool = False
     last_seen: Optional[str] = None
     created_at: Optional[str] = None
@@ -40,6 +44,8 @@ class UserResponse(BaseModel):
     display_name: Optional[str] = None
     avatar_url: Optional[str] = None
     bio: Optional[str] = None
+    cover_url: Optional[str] = None
+    website: Optional[str] = None
     is_online: bool = False
     last_seen: Optional[str] = None
     show_last_seen: bool = True

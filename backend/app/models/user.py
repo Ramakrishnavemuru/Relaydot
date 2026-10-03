@@ -15,6 +15,8 @@ class User(Base):
     display_name = Column(String(100), nullable=True)
     avatar_url = Column(String(500), nullable=True)
     bio = Column(Text, nullable=True)
+    cover_url = Column(String(500), nullable=True)
+    website = Column(String(500), nullable=True)
     last_seen = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=True)
     is_online = Column(Boolean, default=False)
     is_verified = Column(Boolean, default=False, nullable=False)
@@ -51,6 +53,8 @@ class User(Base):
             "display_name": self.display_name or self.username,
             "avatar_url": self.avatar_url,
             "bio": self.bio,
+            "cover_url": self.cover_url,
+            "website": self.website,
             "is_online": self.is_online if self.show_online else False,
             "is_verified": self.is_verified,
             "totp_enabled": self.totp_enabled,

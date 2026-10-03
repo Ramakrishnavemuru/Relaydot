@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#5b55d6">
+  <title>Home · Relay</title>
+  <script src="js/icons.js"></script><script src="js/ui.js"></script>
+  <link rel="stylesheet" href="css/global.css"><link rel="stylesheet" href="css/social.css">
+</head>
+<body class="social-page">
+  <a class="skip-link" href="#social-main">Skip to content</a>
+  <div class="social-shell">
+    <aside class="social-sidebar" aria-label="Main navigation">
+      <a class="social-brand" href="social.html"><span class="social-brand-mark" data-icon="messages"></span><span>relay<span class="brand-period">.</span></span></a>
+      <nav class="social-nav" aria-label="Sections">
+        <a data-nav="home" href="social.html"><span data-icon="circle"></span><span>Home</span></a>
+        <a href="chat.html"><span data-icon="message"></span><span>Chats</span></a>
+        <a data-nav="communities" href="social.html?view=communities"><span data-icon="users"></span><span>Communities</span></a>
+        <a data-nav="search" href="social.html?view=search"><span data-icon="search"></span><span>Explore</span></a>
+        <a data-nav="notifications" href="social.html?view=notifications"><span data-icon="bell"></span><span>Notifications</span><span id="nav-unread" class="nav-unread hidden"></span></a>
+        <a data-nav="bookmarks" href="social.html?view=bookmarks"><span data-icon="bookmark"></span><span>Bookmarks</span></a>
+        <a data-nav="profile" href="social.html?view=profile"><span data-icon="user"></span><span>Profile</span></a>
+      </nav>
+      <button id="sidebar-compose" class="btn btn-primary social-new-post"><span data-icon="compose"></span> Create post</button>
+      <div class="social-sidebar-bottom"><button type="button" id="social-theme" class="social-theme" data-theme-toggle><span data-icon="sun"></span><span>Appearance</span></button><a class="social-account-link" href="profile.html" title="Edit account profile"><img id="sidebar-avatar" alt="" /><span><b id="sidebar-name">Your account</b><small id="sidebar-handle"></small></span><span data-icon="settings"></span></a></div>
+    </aside>
+    <main id="social-main" class="social-main" tabindex="-1">
+      <header class="social-header"><div><span id="social-eyebrow" class="social-eyebrow">YOUR SPACE TO CONNECT</span><h1 id="social-title">Home</h1></div><div class="social-header-actions"><a href="social.html?view=notifications" class="social-icon-button" aria-label="Notifications"><span data-icon="bell"></span></a><button id="header-search" class="social-icon-button" aria-label="Search"><span data-icon="search"></span></button></div></header>
+      <div id="social-content" class="social-content" aria-live="polite"><div class="social-skeleton"></div><div class="social-skeleton"></div></div>
+    </main>
+    <aside class="social-right" aria-label="Discover"><form id="quick-search" role="search" class="social-search-field"><span data-icon="search"></span><input id="quick-search-input" type="search" placeholder="Search Relay" aria-label="Search Relay"></form><section class="social-aside-card"><div class="aside-heading"><h2>What's happening</h2><span data-icon="arrow-right"></span></div><div id="aside-trending" class="aside-list">Loading topics…</div></section><section class="social-aside-card"><div class="aside-heading"><h2>Find your people</h2><span data-icon="users"></span></div><div id="aside-communities" class="aside-list">Loading communities…</div></section><p class="aside-foot">A little closer, every day.</p></aside>
+  </div>
+  <nav class="social-mobile-nav" aria-label="Mobile navigation"><a data-nav="home" href="social.html"><span data-icon="circle"></span><span>Home</span></a><a href="chat.html"><span data-icon="message"></span><span>Chats</span></a><button id="mobile-compose" type="button" aria-label="Create post"><span data-icon="plus"></span></button><a data-nav="communities" href="social.html?view=communities"><span data-icon="users"></span><span>Communities</span></a><a data-nav="profile" href="social.html?view=profile"><span data-icon="user"></span><span>Profile</span></a></nav>
+  <div id="social-dialog" class="social-dialog-backdrop hidden" role="presentation"><div class="social-dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title"><div class="dialog-top"><h2 id="dialog-title">Create post</h2><button id="dialog-close" class="social-icon-button" type="button" aria-label="Close"><span data-icon="x"></span></button></div><div id="dialog-body"></div></div></div>
+  <script src="js/config.js"></script><script src="js/utils.js"></script><script src="js/api.js"></script><script src="js/auth.js"></script><script src="js/websocket.js"></script><script src="js/social.js"></script>
+</body>
+</html>

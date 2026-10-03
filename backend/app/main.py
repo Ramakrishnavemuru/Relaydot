@@ -7,6 +7,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Query, sta
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
+from sqlalchemy import inspect
 
 from app.config import settings, BASE_DIR
 from app.database import engine, Base, get_db
@@ -35,6 +36,20 @@ logger = logging.getLogger("app")
 def run_schema_migrations():
     """Ensure database schema is up-to-date with new auth columns."""
     try:
+        if engine.dialect.name == "postgresql":
+            existing_tables = set(inspect(engine).get_table_names())
+            with engine.begin() as conn:
+                if "users" in existing_tables:
+                    for column, definition in {
+                        "phone_number": "VARCHAR(30)", "is_verified": "BOOLEAN DEFAULT TRUE",
+                        "totp_secret": "VARCHAR(64)", "totp_enabled": "BOOLEAN DEFAULT FALSE",
+                        "cover_url": "VARCHAR(500)", "website": "VARCHAR(500)"}.items():
+                        conn.exec_driver_sql(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {column} {definition}")
+                if "stories" in existing_tables:
+                    conn.exec_driver_sql("ALTER TABLE stories ADD COLUMN IF NOT EXISTS visibility VARCHAR(12) DEFAULT 'EVERYONE'")
+            return
+        if engine.dialect.name != "sqlite":
+            return
         with engine.connect() as conn:
             cols = [row[1] for row in conn.exec_driver_sql("PRAGMA table_info(users)").fetchall()]
             if cols:
@@ -46,6 +61,13 @@ def run_schema_migrations():
                     conn.exec_driver_sql("ALTER TABLE users ADD COLUMN totp_secret VARCHAR(64)")
                 if "totp_enabled" not in cols:
                     conn.exec_driver_sql("ALTER TABLE users ADD COLUMN totp_enabled BOOLEAN DEFAULT 0")
+                if "cover_url" not in cols:
+                    conn.exec_driver_sql("ALTER TABLE users ADD COLUMN cover_url VARCHAR(500)")
+                if "website" not in cols:
+                    conn.exec_driver_sql("ALTER TABLE users ADD COLUMN website VARCHAR(500)")
+            story_cols = [row[1] for row in conn.exec_driver_sql("PRAGMA table_info(stories)").fetchall()]
+            if story_cols and "visibility" not in story_cols:
+                conn.exec_driver_sql("ALTER TABLE stories ADD COLUMN visibility VARCHAR(12) DEFAULT 'EVERYONE'")
             conn.commit()
     except Exception as e:
         logger.warning(f"Schema migration warning: {e}")

@@ -1,10 +1,15 @@
-# 💬 Full Real-Time Chat Application
+# Relay — messaging, social feed, and communities
 
-A high-performance, full-stack real-time chat application built with **FastAPI**, **WebSockets**, **SQLAlchemy**, **SQLite**, and modern **Vanilla HTML/CSS/JavaScript**.
+A unified communication app built with **FastAPI**, **WebSockets**, **SQLAlchemy**, and **vanilla HTML/CSS/JavaScript**. Existing chats and accounts share one backend with the social feed and communities.
 
 ---
 
 ## 🚀 Features
+
+- **Social feed**: text, uploaded image/video/GIF, polls, hashtags, mentions, threads, reposts, quotes, replies, reactions, bookmarks, and chat sharing.
+- **People and discovery**: public profiles, follows, For You and Following feeds, trends, global search, and privacy controls.
+- **Communities**: member roles, moderated posts, and a group chat powered by the existing messaging WebSocket.
+- **Stories and activity**: expiring text/media stories, viewer privacy, persistent activity notifications, and live WebSocket updates.
 
 - **🔐 Robust Authentication & Security**:
   - User Registration, Login, Logout
@@ -35,7 +40,7 @@ A high-performance, full-stack real-time chat application built with **FastAPI**
 - **📎 File & Media Sharing**:
   - Cloudinary free tier integration with seamless local storage fallback
   - Image previews inline, documents and PDFs with download links and file size display
-  - Upload size limit and file type validation
+  - Upload size limit, file signature checks for common media, and file type validation
 
 - **🔔 Notifications**:
   - Web Audio API synthesized notification chimes (0 external audio dependencies)
@@ -45,7 +50,7 @@ A high-performance, full-stack real-time chat application built with **FastAPI**
 - **📱 Fully Responsive Design**:
   - Sleek desktop multi-column interface
   - Mobile sliding drawer interface with back navigation
-  - Modern glassmorphic dark theme
+  - Light and dark themes across chat, feed, and communities
 
 ---
 
@@ -56,7 +61,7 @@ A high-performance, full-stack real-time chat application built with **FastAPI**
 | **Frontend** | HTML5, CSS3, Vanilla JavaScript (ES6+) |
 | **Backend** | Python 3.10+, FastAPI, Starlette |
 | **Real-time** | WebSockets |
-| **Database** | SQLite with Foreign Key pragma support |
+| **Database** | SQLite or PostgreSQL via SQLAlchemy |
 | **ORM** | SQLAlchemy 2.0+ |
 | **Authentication** | JWT (python-jose) + bcrypt |
 | **File Storage** | Cloudinary Free Tier (with local `/uploads` fallback) |
@@ -79,7 +84,8 @@ realtime-chat-app/
 │   │   │   ├── message.py
 │   │   │   ├── attachment.py
 │   │   │   ├── reaction.py
-│   │   │   └── block.py
+│   │   │   ├── block.py
+│   │   │   └── social.py
 │   │   ├── schemas/               # Pydantic v2 validation schemas
 │   │   │   ├── auth.py
 │   │   │   ├── user.py
@@ -95,6 +101,8 @@ realtime-chat-app/
 │   │   │   ├── conversation_service.py
 │   │   │   ├── message_service.py
 │   │   │   ├── notification_service.py
+│   │   │   ├── feed_service.py
+│   │   │   ├── rate_limit.py
 │   │   │   └── cloudinary_service.py
 │   │   ├── websocket/             # WebSocket connection manager & events
 │   │   │   ├── manager.py
@@ -106,12 +114,14 @@ realtime-chat-app/
 │   │   │   ├── groups.py
 │   │   │   ├── messages.py
 │   │   │   ├── search.py
+│   │   │   ├── social.py
 │   │   │   └── uploads.py
 │   │   └── utils/                 # Validators and text/avatar helpers
 │   ├── tests/                     # Pytest suite
 │   │   ├── conftest.py            # In-memory test database fixture
 │   │   ├── test_auth.py
 │   │   ├── test_users.py
+│   │   ├── test_social.py
 │   │   └── test_messages.py
 │   ├── requirements.txt
 │   └── .env
@@ -120,12 +130,14 @@ realtime-chat-app/
 │   ├── login.html                 # Login & forgot password
 │   ├── register.html              # Registration
 │   ├── chat.html                  # Main real-time chat interface
+│   ├── social.html                # Feed, posts, people, communities, activity
 │   ├── profile.html               # Profile page
 │   ├── settings.html              # Settings page
 │   ├── css/
 │   │   ├── global.css
 │   │   ├── auth.css
 │   │   ├── chat.css
+│   │   ├── social.css
 │   │   ├── profile.css
 │   │   └── responsive.css
 │   └── js/
@@ -138,6 +150,7 @@ realtime-chat-app/
 │       ├── users.js
 │       ├── groups.js
 │       ├── profile.js
+│       ├── social.js
 │       └── chat.js
 └── README.md
 ```
@@ -162,7 +175,7 @@ Copy or edit `backend/.env`:
 APP_NAME="Real-Time Chat App"
 APP_ENV=development
 DEBUG=True
-SECRET_KEY=super-secret-jwt-key-for-realtime-chat-app-2026-production-ready
+SECRET_KEY=replace-with-a-long-random-secret-before-deploying
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=10080
 DATABASE_URL=sqlite:///./chat.db
@@ -177,11 +190,12 @@ CLOUDINARY_API_SECRET=
 
 ```bash
 # From the backend directory:
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 The application will be live at:
-- **Web App**: [http://localhost:8000](http://localhost:8000)
+- **Social home**: [http://localhost:8000/social.html](http://localhost:8000/social.html)
+- **Chats**: [http://localhost:8000/chat.html](http://localhost:8000/chat.html)
 - **Interactive Swagger API Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
 - **ReDoc**: [http://localhost:8000/redoc](http://localhost:8000/redoc)
 
@@ -192,7 +206,8 @@ The application will be live at:
 To run the full backend test suite:
 
 ```bash
-PYTHONPATH=backend pytest backend/tests -v
+cd backend
+python -m pytest -q
 ```
 
 ---
