@@ -72,9 +72,15 @@
       state.stories = groups;
     } catch { const strip = $('#home-stories'); if (strip) strip.innerHTML = '<span class="composer-hint">Stories are unavailable right now.</span>'; }
   };
+  const reelTile = reel => `<a class="social-reel-tile" href="reels.html?id=${esc(reel.public_id)}"><img src="${esc(API.resolveUrl(reel.thumbnail_url))}" alt="${esc(reel.caption.slice(0,70) || 'Reel')}"><span>${icon('video')} @${esc(reel.creator.username)}</span></a>`;
+  const loadHomeReels = async () => { const strip = $('#home-reels'); if (!strip) return;
+    try { const data = await API.get('/reels',{mode:'for_you',limit:4});
+      strip.innerHTML = data.items.length ? `<div class="social-reels-heading"><h2>Watch a little</h2><a href="reels.html">See all Reels ${icon('arrow-right')}</a></div><div class="social-reels-strip">${data.items.map(reelTile).join('')}</div>` : `<a class="social-reels-empty" href="reels.html">${icon('video')} Explore Reels <span>Short stories from your community</span></a>`;
+    } catch { strip.innerHTML = ''; }
+  };
   const renderHome = async (reset = true) => {
     setTitle('Home');
-    if (reset) { state.offset = 0; state.items = []; content.innerHTML = `<div id="home-stories" class="story-strip"></div><button class="social-composer-trigger" data-action="compose"><img src="${esc(avatar(state.user))}" alt=""><span>What's on your mind?</span>${icon('compose')}</button>${feedTabs()}<div id="feed-items">${loading()}</div>`; loadStories(); }
+    if (reset) { state.offset = 0; state.items = []; content.innerHTML = `<div id="home-stories" class="story-strip"></div><div id="home-reels"></div><button class="social-composer-trigger" data-action="compose"><img src="${esc(avatar(state.user))}" alt=""><span>What's on your mind?</span>${icon('compose')}</button>${feedTabs()}<div id="feed-items">${loading()}</div>`; loadStories(); loadHomeReels(); }
     try {
       const result = await get('/feed', {mode:state.mode, offset:state.offset, limit:15});
       state.items.push(...result.items); state.next = result.next_offset;
@@ -119,7 +125,7 @@
     try { const p = await get(`/profiles/${id}`); state.profile = p; setTitle(p.id === state.user?.id ? 'Your profile' : p.display_name || p.username, 'PEOPLE ON RELAY');
       const own = p.id === state.user?.id;
       const cover = p.cover_url ? `style="background-image:url('${esc(API.resolveUrl(p.cover_url))}')"` : '';
-      content.innerHTML = `<div class="social-profile-cover" ${cover}></div><div class="social-profile-info"><img src="${esc(avatar(p))}" alt=""><div class="profile-actions">${own ? `<a href="profile.html" class="btn btn-secondary">Edit profile</a>` : `<button class="btn ${p.is_following ? 'btn-secondary' : 'btn-primary'}" data-action="follow" data-id="${p.id}">${p.is_following ? 'Following' : 'Follow'}</button><button class="btn btn-secondary" data-action="message-user" data-id="${p.id}">Message</button>`}</div><h2>${esc(p.display_name || p.username)}</h2><small>@${esc(p.username)}</small>${p.bio ? `<p>${esc(p.bio)}</p>` : ''}${p.website ? `<a href="${esc(safeUrl(p.website))}" target="_blank" rel="noopener noreferrer">${esc(p.website)}</a>` : ''}<div class="profile-stats"><button data-action="people-list" data-id="${p.id}" data-kind="followers"><b>${p.followers_count}</b> followers</button><button data-action="people-list" data-id="${p.id}" data-kind="following"><b>${p.following_count}</b> following</button><button data-action="profile-tab" data-tab="posts"><b>${p.posts_count}</b> posts</button></div><small>Joined ${parseTime(p.created_at).toLocaleDateString(undefined,{month:'long',year:'numeric'})}</small></div><div class="profile-tabs" role="tablist">${['posts','replies','media'].map(t => `<button data-action="profile-tab" data-tab="${t}" class="${t === 'posts' ? 'active' : ''}" role="tab" aria-selected="${t === 'posts'}">${t[0].toUpperCase()+t.slice(1)}</button>`).join('')}</div><div id="profile-posts">${loading()}</div>`;
+      content.innerHTML = `<div class="social-profile-cover" ${cover}></div><div class="social-profile-info"><img src="${esc(avatar(p))}" alt=""><div class="profile-actions">${own ? `<a href="profile.html" class="btn btn-secondary">Edit profile</a>` : `<button class="btn ${p.is_following ? 'btn-secondary' : 'btn-primary'}" data-action="follow" data-id="${p.id}">${p.is_following ? 'Following' : 'Follow'}</button><button class="btn btn-secondary" data-action="message-user" data-id="${p.id}">Message</button>`}</div><h2>${esc(p.display_name || p.username)}</h2><small>@${esc(p.username)}</small>${p.bio ? `<p>${esc(p.bio)}</p>` : ''}${p.website ? `<a href="${esc(safeUrl(p.website))}" target="_blank" rel="noopener noreferrer">${esc(p.website)}</a>` : ''}<div class="profile-stats"><button data-action="people-list" data-id="${p.id}" data-kind="followers"><b>${p.followers_count}</b> followers</button><button data-action="people-list" data-id="${p.id}" data-kind="following"><b>${p.following_count}</b> following</button><button data-action="profile-tab" data-tab="posts"><b>${p.posts_count}</b> posts</button></div><small>Joined ${parseTime(p.created_at).toLocaleDateString(undefined,{month:'long',year:'numeric'})}</small></div><div class="profile-tabs" role="tablist">${['posts','replies','media','reels'].map(t => `<button data-action="profile-tab" data-tab="${t}" class="${t === 'posts' ? 'active' : ''}" role="tab" aria-selected="${t === 'posts'}">${t[0].toUpperCase()+t.slice(1)}</button>`).join('')}</div><div id="profile-posts">${loading()}</div>`;
       if (!own) $('.profile-actions').insertAdjacentHTML('beforeend', `<button class="btn btn-secondary" data-action="profile-menu" data-id="${p.id}" aria-label="More profile options">${icon('more')}</button>`);
       await loadProfileTab('posts');
     } catch (e) { content.innerHTML = message('Profile unavailable', e.message, 'error'); }
@@ -127,6 +133,17 @@
   const loadProfileTab = async (tab, append = false) => {
     $$('.profile-tabs button').forEach(b => { b.classList.toggle('active', b.dataset.tab === tab); b.setAttribute('aria-selected', String(b.dataset.tab === tab)); });
     const target = $('#profile-posts'); if (!target) return; if (!append) target.innerHTML = loading();
+    if (tab === 'reels') {
+      try { const data = await API.get('/reels',{creator_id:state.profile.id,limit:15,offset:append ? state.profileOffset : 0});
+        if (append) target.querySelector('.load-more')?.remove(); else target.innerHTML = '';
+        target.classList.add('profile-reel-grid');
+        target.insertAdjacentHTML('beforeend',data.items.length ? data.items.map(reel => `<a class="profile-reel" href="reels.html?id=${esc(reel.public_id)}"><img src="${esc(API.resolveUrl(reel.thumbnail_url))}" alt="${esc(reel.caption.slice(0,80) || 'Reel')}"><span>${icon('video')} ${reel.views_count} views</span></a>`).join('') : append ? '' : message('No Reels yet','Videos will appear here when shared.'));
+        state.profileTab = tab; state.profileOffset = data.next_offset;
+        if (data.next_offset !== null) target.insertAdjacentHTML('beforeend','<button class="load-more" data-action="more-profile-posts">Load more Reels</button>');
+      } catch(e) { target.innerHTML = message('Could not load Reels',e.message,'error'); }
+      return;
+    }
+    target.classList.remove('profile-reel-grid');
     try { const data = await get(`/profiles/${state.profile.id}/posts`, {tab,limit:15,offset:append ? state.profileOffset : 0});
       if (append) target.querySelector('.load-more')?.remove(); else target.innerHTML = '';
       target.insertAdjacentHTML('beforeend', data.items.length ? data.items.map(item => item.post ? `<div class="post-repost-label">${esc(item.comment.content.slice(0,120))}</div>${postCard(item.post)}` : postCard(item)).join('') : append ? '' : message(`No ${tab} yet`, 'There is nothing to show here yet.'));
@@ -153,8 +170,8 @@
     } catch (e) { content.innerHTML = message('Community unavailable', e.message, 'error'); }
   };
   const notificationCard = n => {
-    const phrases = {follow:'started following you',like:'liked your post',comment:'commented on your post',reply:'replied to your comment',mention:'mentioned you',repost:'reposted your post',quote:'quoted your post',community_join:'joined your community',community_post:'shared in a community',message:'sent you a message'};
-    const href = n.entity_type === 'post' ? link('post',n.entity_id) : n.entity_type === 'community' ? link('community',n.entity_id) : n.entity_type === 'conversation' ? `chat.html?conversation=${n.entity_id}` : link('profile',n.entity_id);
+    const phrases = {follow:'started following you',like:'liked your post',comment:'commented on your post',reply:'replied to your comment',mention:'mentioned you',repost:'reposted your post',quote:'quoted your post',community_join:'joined your community',community_post:'shared in a community',message:'sent you a message',thread_reply:'replied in your thread',reel_like:'liked your Reel',reel_comment:'commented on your Reel',reel_reply:'replied to your Reel comment',reel_share:'shared your Reel',reel_mention:'mentioned you in a Reel'};
+    const href = n.entity_type === 'post' ? link('post',n.entity_id) : n.entity_type === 'reel' ? `reels.html?reel_id=${n.entity_id}` : n.entity_type === 'community' ? link('community',n.entity_id) : n.entity_type === 'conversation' ? `chat.html?conversation=${n.entity_id}` : link('profile',n.entity_id);
     return `<a class="notification-item ${n.read ? '' : 'unread'}" href="${href}"><img src="${esc(avatar(n.actor))}" alt=""><div><p><strong>${esc(n.actor?.display_name || n.actor?.username || 'A member')}</strong> ${esc(phrases[n.type] || n.type)}</p><small>${timeAgo(n.created_at)} ago</small></div></a>`;
   };
   const loadNotifications = async (append = false) => {
@@ -174,7 +191,9 @@
     $('#notification-list').innerHTML = loading(); await loadNotifications();
   };
   const renderHashtag = async () => { setTitle(`#${state.id}`, 'TOPIC'); content.innerHTML = loading();
-    try { const data = await get(`/hashtags/${encodeURIComponent(state.id)}`,{limit:15}); content.innerHTML = `<div class="page-intro"><p>${data.count} posts about #${esc(data.name)}</p></div><div id="hashtag-posts"></div>`; state['more-hashtag-postsOffset'] = data.next_offset; $('#hashtag-posts').innerHTML = data.items.length ? data.items.map(postCard).join('') + (data.next_offset !== null ? '<button class="load-more" data-action="more-hashtag-posts">Load more</button>' : '') : message('No posts yet', 'Be the first to use this topic.'); }
+    try { const data = await get(`/hashtags/${encodeURIComponent(state.id)}`,{limit:15}); content.innerHTML = `<div class="page-intro"><p>${data.count} posts about #${esc(data.name)}</p></div><div id="hashtag-reels"></div><div id="hashtag-posts"></div>`; state['more-hashtag-postsOffset'] = data.next_offset; $('#hashtag-posts').innerHTML = data.items.length ? data.items.map(postCard).join('') + (data.next_offset !== null ? '<button class="load-more" data-action="more-hashtag-posts">Load more</button>' : '') : message('No posts yet', 'Be the first to use this topic.');
+      API.get('/reels',{q:`#${state.id}`,limit:6}).then(result => { const target=$('#hashtag-reels'); if (target && result.items.length) target.innerHTML=`<div class="social-reels-heading"><h2>Reels about #${esc(state.id)}</h2><a href="reels.html?q=${encodeURIComponent('#'+state.id)}">See all ${icon('arrow-right')}</a></div><div class="social-reels-strip">${result.items.map(reelTile).join('')}</div>`; }).catch(()=>{});
+    }
     catch (e) { content.innerHTML = message('Topic unavailable', e.message, 'error'); }
   };
   const renderSearch = async (query = params.get('q') || '') => { setTitle('Explore', 'DISCOVER RELAY');

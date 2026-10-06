@@ -1,6 +1,6 @@
 from app.models.user import User
 from app.models.conversation import Conversation, ConversationMember
-from app.models.message import Message, MessageRead
+from app.models.message import Message, MessageRead, MessageBookmark, ScheduledMessage
 from app.models.attachment import Attachment
 from app.models.reaction import MessageReaction
 from app.models.block import BlockedUser
@@ -13,6 +13,8 @@ from app.models.recovery_code import RecoveryCode
 from app.models.social import (Follow, Community, CommunityMember, Post, PostReaction,
     Comment, CommentReaction, Bookmark, Hashtag, PostHashtag, PostMention,
     PollOption, PollVote, SocialNotification, Report)
+from app.models.reel import (Reel, ReelLike, ReelBookmark, ReelComment, ReelCommentLike,
+    ReelView, ReelShare, ReelHashtag, ReelMention)
 
 __all__ = [
     "User",

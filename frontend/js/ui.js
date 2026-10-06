@@ -129,7 +129,7 @@
   });
   let menu;
   const closeMenu = () => { if (menu) { const trigger = menu.trigger; menu.remove(); menu = null; trigger?.setAttribute('aria-expanded','false'); } };
-  const showMenu = (trigger, actions) => {
+  const showMenu = (trigger, actions, captionText = 'Chat preferences stay on this browser') => {
     closeMenu(); menu = document.createElement('div'); menu.className = 'context-menu'; menu.setAttribute('role','menu'); menu.trigger = trigger;
     trigger.setAttribute('aria-expanded','true');
     actions.forEach(({label, icon: name, run, danger}) => {
@@ -138,7 +138,7 @@
       button.onclick = () => { closeMenu(); trigger.focus(); Promise.resolve().then(run).catch(() => typeof Utils !== 'undefined' && Utils.showToast('Something went wrong. Please try again.', 'error')); };
       menu.append(button);
     });
-    const caption = document.createElement('small'); caption.textContent = 'Chat preferences stay on this browser'; menu.append(caption);
+    const caption = document.createElement('small'); caption.textContent = captionText; menu.append(caption);
     document.body.append(menu);
     const rect = trigger.getBoundingClientRect(); const box = menu.getBoundingClientRect();
     menu.style.left = `${Math.max(8, Math.min(rect.right - box.width, innerWidth - box.width - 8))}px`;

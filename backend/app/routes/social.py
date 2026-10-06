@@ -10,6 +10,7 @@ from app.security.dependencies import get_current_user
 from app.models.user import User
 from app.models.block import BlockedUser
 from app.models.conversation import Conversation, ConversationMember
+from app.models.message import Message
 from app.models.social import (Bookmark, Comment, CommentReaction, Community, CommunityMember,
     Follow, Hashtag, PollOption, PollVote, Post, PostHashtag, PostMention,
     PostReaction, Report, SocialNotification)
@@ -541,7 +542,8 @@ def mark_notifications_read(data: NotificationRead, current: User = Depends(get_
 @router.post("/reports", status_code=201)
 def report(data: ReportCreate, current: User = Depends(get_current_user), db: Session = Depends(get_db)):
     throttle(current.id, "report", 10, 3600)
-    model = {"post": Post, "comment": Comment, "user": User, "community": Community}[data.entity_type]
+    model = {"post": Post, "comment": Comment, "user": User, "community": Community,
+        "message": Message}[data.entity_type]
     target = db.get(model, data.entity_id)
     if not target:
         raise HTTPException(404, "Content not found")
@@ -551,6 +553,10 @@ def report(data: ReportCreate, current: User = Depends(get_current_user), db: Se
         post_or_404(db, target.post_id, current.id)
     if data.entity_type == "user":
         user_or_404(db, data.entity_id, current.id)
+    if data.entity_type == "message":
+        if not db.query(ConversationMember.id).filter_by(
+            conversation_id=target.conversation_id, user_id=current.id).first():
+            raise HTTPException(404, "Content not found")
     existing = db.query(Report).filter_by(reporter_id=current.id,
         entity_type=data.entity_type, entity_id=data.entity_id).first()
     if not existing:

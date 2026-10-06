@@ -1,15 +1,26 @@
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
+from urllib.parse import urlparse
 from app.schemas.user import UserPublicResponse
 
 
 class AttachmentCreate(BaseModel):
-    file_url: str
-    file_name: str
-    file_type: str
-    file_size: int
+    file_url: str = Field(..., max_length=500)
+    file_name: str = Field(..., min_length=1, max_length=255)
+    file_type: str = Field(..., max_length=100)
+    file_size: int = Field(..., ge=1, le=15 * 1024 * 1024)
     public_id: Optional[str] = None
+
+    @field_validator("file_url")
+    @classmethod
+    def uploaded_url(cls, value: str) -> str:
+        parsed = urlparse(value)
+        if value.startswith("/uploads/") and parsed.path == value and ".." not in value:
+            return value
+        if parsed.scheme == "https" and parsed.hostname == "res.cloudinary.com":
+            return value
+        raise ValueError("Attachment must use an uploaded file URL")
 
 
 class AttachmentResponse(BaseModel):
@@ -45,7 +56,22 @@ class MessageCreate(BaseModel):
     content: str = Field(..., max_length=10000)
     message_type: str = "TEXT"  # TEXT, IMAGE, FILE, SYSTEM
     reply_to_id: Optional[int] = None
+    thread_root_id: Optional[int] = None
+    expires_in_seconds: Optional[int] = Field(None, ge=10, le=604800)
+    is_forwarded: bool = False
     attachments: Optional[List[AttachmentCreate]] = None
+
+
+class ScheduledMessageCreate(BaseModel):
+    conversation_id: int
+    content: str = Field(..., min_length=1, max_length=10000)
+    send_at: datetime
+    reply_to_id: Optional[int] = None
+    thread_root_id: Optional[int] = None
+
+
+class ForwardMessageCreate(BaseModel):
+    conversation_ids: List[int] = Field(..., min_length=1, max_length=10)
 
 
 class MessageEdit(BaseModel):
@@ -74,6 +100,12 @@ class MessageResponse(BaseModel):
     content: str
     message_type: str
     reply_to_id: Optional[int] = None
+    thread_root_id: Optional[int] = None
+    thread_reply_count: int = 0
+    expires_at: Optional[str] = None
+    pinned_at: Optional[str] = None
+    bookmarked: bool = False
+    is_forwarded: bool = False
     reply_to: Optional[MessageReplyPreview] = None
     created_at: str
     updated_at: Optional[str] = None

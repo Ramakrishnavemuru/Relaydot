@@ -3,9 +3,9 @@ const isLocalhost = window.location.hostname === 'localhost' || window.location.
 const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
 const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 
-// In production (Render, custom domain), use current host. In localhost development, point to backend port 8000.
+// A standalone frontend dev server uses the backend on 8000; a backend-served page uses its own origin.
 const host = isLocalhost 
-  ? (window.location.port === '8000' ? window.location.host : `${window.location.hostname}:8000`)
+  ? (['3000', '5500'].includes(window.location.port) ? `${window.location.hostname}:8000` : window.location.host)
   : window.location.host;
 
 const CONFIG = {

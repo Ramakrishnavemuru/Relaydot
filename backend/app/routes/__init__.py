@@ -9,6 +9,7 @@ from app.routes.uploads import router as uploads_router
 from app.routes.calls import router as calls_router
 from app.routes.stories import router as stories_router
 from app.routes.social import router as social_router
+from app.routes.reels import router as reels_router
 
 api_router = APIRouter(prefix="/api")
 
@@ -22,3 +23,4 @@ api_router.include_router(uploads_router)
 api_router.include_router(calls_router)
 api_router.include_router(stories_router)
 api_router.include_router(social_router)
+api_router.include_router(reels_router)

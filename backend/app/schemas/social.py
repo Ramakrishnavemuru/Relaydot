@@ -63,7 +63,7 @@ class MemberRole(BaseModel):
 
 
 class ReportCreate(BaseModel):
-    entity_type: Literal["post", "comment", "user", "community"]
+    entity_type: Literal["post", "comment", "user", "community", "message"]
     entity_id: int
     reason: Literal["spam", "harassment", "impersonation", "inappropriate", "scam", "other"]
     details: str | None = Field(default=None, max_length=500)

@@ -15,6 +15,7 @@ backend/.env
 
 # Uploads
 backend/uploads/
+backend/reel_media/
 uploads/
 
 # IDE & OS

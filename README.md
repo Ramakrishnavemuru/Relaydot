@@ -10,6 +10,7 @@ A unified communication app built with **FastAPI**, **WebSockets**, **SQLAlchemy
 - **People and discovery**: public profiles, follows, For You and Following feeds, trends, global search, and privacy controls.
 - **Communities**: member roles, moderated posts, and a group chat powered by the existing messaging WebSocket.
 - **Stories and activity**: expiring text/media stories, viewer privacy, persistent activity notifications, and live WebSocket updates.
+- **Reels**: vertical short-video viewer, MP4/WebM upload or browser recording, background FFmpeg processing, cover frames, captions, visibility, drafts, likes, threaded and pinned comments, saved Reels, search, chat sharing, archive controls, and creator analytics.
 
 - **🔐 Robust Authentication & Security**:
   - User Registration, Login, Logout
@@ -36,6 +37,10 @@ A unified communication app built with **FastAPI**, **WebSockets**, **SQLAlchemy
   - Read receipts (`✓` Sent, `✓✓` Delivered, `✓✓` Read)
   - Ephemeral typing indicators ("Rahul is typing...") with bouncing animation
   - Search messages across all joined conversations
+  - Message threads, forwarding to multiple chats, pinning, and private saved messages
+  - Scheduled text messages with database-backed delivery and cancellation
+  - Disappearing messages (10 seconds to 7 days) and per-conversation drafts in this browser
+  - Search by conversation, sender, date, and attachment type
 
 - **📎 File & Media Sharing**:
   - Cloudinary free tier integration with seamless local storage fallback
@@ -188,6 +193,10 @@ CLOUDINARY_API_SECRET=
 
 ### 3. Start the Server
 
+Install **FFmpeg and FFprobe** on the server before uploading Reels. Processing runs in a background worker started with the FastAPI app. Reel originals and processed media are stored in a private `reel_media` directory beside `UPLOAD_DIR`; include that directory in backups and provision persistent storage in production.
+The existing startup schema update creates the additive Reel tables and indexes without replacing chat or social tables.
+Reel media currently uses private local storage and signed one-hour playback links. Deploy it with persistent storage and a strong `SECRET_KEY`. An external object store, adaptive streaming, a licensed audio catalog, and a platform-wide Reel moderation console remain future infrastructure work.
+
 ```bash
 # From the backend directory:
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
@@ -196,6 +205,7 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 The application will be live at:
 - **Social home**: [http://localhost:8000/social.html](http://localhost:8000/social.html)
 - **Chats**: [http://localhost:8000/chat.html](http://localhost:8000/chat.html)
+- **Reels**: [http://localhost:8000/reels.html](http://localhost:8000/reels.html)
 - **Interactive Swagger API Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
 - **ReDoc**: [http://localhost:8000/redoc](http://localhost:8000/redoc)
 
@@ -209,6 +219,9 @@ To run the full backend test suite:
 cd backend
 python -m pytest -q
 ```
+
+If a globally installed pytest plugin conflicts with this project, use
+`PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=. python -m pytest -q` from `backend`.
 
 ---
 

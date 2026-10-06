@@ -1,4 +1,5 @@
 import os
+import asyncio
 import json
 import logging
 from contextlib import asynccontextmanager
@@ -23,7 +24,10 @@ from app.websocket.call_events import ALL_CALL_EVENTS
 from app.websocket.signaling import CallSignalingHandler
 from app.security.jwt import decode_token
 from app.models.user import User
+from app.models.conversation import ConversationMember
 from app.services.message_service import MessageService
+from app.services.scheduled_service import run_message_jobs
+from app.services.reel_processor import run_reel_worker
 from app.schemas.message import MessageCreate
 
 from app.models.session import UserSession
@@ -34,7 +38,7 @@ logger = logging.getLogger("app")
 
 
 def run_schema_migrations():
-    """Ensure database schema is up-to-date with new auth columns."""
+    """Add backward-compatible auth, story, and message columns to existing databases."""
     try:
         if engine.dialect.name == "postgresql":
             existing_tables = set(inspect(engine).get_table_names())
@@ -47,6 +51,16 @@ def run_schema_migrations():
                         conn.exec_driver_sql(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {column} {definition}")
                 if "stories" in existing_tables:
                     conn.exec_driver_sql("ALTER TABLE stories ADD COLUMN IF NOT EXISTS visibility VARCHAR(12) DEFAULT 'EVERYONE'")
+                if "messages" in existing_tables:
+                    for column, definition in {"thread_root_id": "INTEGER", "expires_at": "TIMESTAMP",
+                        "pinned_at": "TIMESTAMP", "pinned_by_id": "INTEGER",
+                        "is_forwarded": "BOOLEAN DEFAULT FALSE", "scheduled_message_id": "INTEGER"}.items():
+                        conn.exec_driver_sql(f"ALTER TABLE messages ADD COLUMN IF NOT EXISTS {column} {definition}")
+                    conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_messages_thread_root_id ON messages (thread_root_id)")
+                    conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_messages_expires_at ON messages (expires_at)")
+                    conn.exec_driver_sql("CREATE UNIQUE INDEX IF NOT EXISTS ux_messages_scheduled_message_id ON messages (scheduled_message_id)")
+                if "reel_comments" in existing_tables:
+                    conn.exec_driver_sql("ALTER TABLE reel_comments ADD COLUMN IF NOT EXISTS pinned_at TIMESTAMP")
             return
         if engine.dialect.name != "sqlite":
             return
@@ -68,6 +82,19 @@ def run_schema_migrations():
             story_cols = [row[1] for row in conn.exec_driver_sql("PRAGMA table_info(stories)").fetchall()]
             if story_cols and "visibility" not in story_cols:
                 conn.exec_driver_sql("ALTER TABLE stories ADD COLUMN visibility VARCHAR(12) DEFAULT 'EVERYONE'")
+            message_cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(messages)").fetchall()}
+            for column, definition in {"thread_root_id": "INTEGER", "expires_at": "DATETIME",
+                "pinned_at": "DATETIME", "pinned_by_id": "INTEGER",
+                "is_forwarded": "BOOLEAN DEFAULT 0", "scheduled_message_id": "INTEGER"}.items():
+                if message_cols and column not in message_cols:
+                    conn.exec_driver_sql(f"ALTER TABLE messages ADD COLUMN {column} {definition}")
+            if message_cols:
+                conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_messages_thread_root_id ON messages (thread_root_id)")
+                conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_messages_expires_at ON messages (expires_at)")
+                conn.exec_driver_sql("CREATE UNIQUE INDEX IF NOT EXISTS ux_messages_scheduled_message_id ON messages (scheduled_message_id)")
+            reel_comment_cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(reel_comments)").fetchall()}
+            if reel_comment_cols and "pinned_at" not in reel_comment_cols:
+                conn.exec_driver_sql("ALTER TABLE reel_comments ADD COLUMN pinned_at DATETIME")
             conn.commit()
     except Exception as e:
         logger.warning(f"Schema migration warning: {e}")
@@ -80,7 +107,21 @@ async def lifespan(app: FastAPI):
     run_schema_migrations()
     Base.metadata.create_all(bind=engine)
     logger.info("Database initialized.")
-    yield
+    message_jobs = asyncio.create_task(run_message_jobs())
+    reel_jobs = asyncio.create_task(run_reel_worker())
+    try:
+        yield
+    finally:
+        message_jobs.cancel()
+        reel_jobs.cancel()
+        try:
+            await message_jobs
+        except asyncio.CancelledError:
+            pass
+        try:
+            await reel_jobs
+        except asyncio.CancelledError:
+            pass
     # Shutdown logic if any
     logger.info("Shutting down application...")
 
@@ -182,7 +223,8 @@ async def websocket_endpoint(
             # Real-time typing indicators
             if event_type in (EVENT_TYPING_START, "typing"):
                 conversation_id = payload_data.get("conversation_id")
-                if conversation_id:
+                if isinstance(conversation_id, int) and db.query(ConversationMember.id).filter_by(
+                    conversation_id=conversation_id, user_id=user.id).first():
                     broadcast_payload = create_event(EVENT_TYPING_START, {
                         "conversation_id": conversation_id,
                         "user_id": user.id,
@@ -195,7 +237,8 @@ async def websocket_endpoint(
 
             elif event_type in (EVENT_TYPING_STOP, "stop_typing"):
                 conversation_id = payload_data.get("conversation_id")
-                if conversation_id:
+                if isinstance(conversation_id, int) and db.query(ConversationMember.id).filter_by(
+                    conversation_id=conversation_id, user_id=user.id).first():
                     broadcast_payload = create_event(EVENT_TYPING_STOP, {
                         "conversation_id": conversation_id,
                         "user_id": user.id
@@ -213,12 +256,14 @@ async def websocket_endpoint(
                     reply_to_id = payload_data.get("reply_to_id")
                     attachments = payload_data.get("attachments")
 
-                    if conv_id and content:
+                    if conv_id and (content or attachments):
                         msg_create = MessageCreate(
                             conversation_id=conv_id,
-                            content=content,
+                            content=content or "",
                             message_type=message_type,
                             reply_to_id=reply_to_id,
+                            thread_root_id=payload_data.get("thread_root_id"),
+                            expires_in_seconds=payload_data.get("expires_in_seconds"),
                             attachments=attachments
                         )
                         await MessageService.send_message(db, user.id, msg_create)

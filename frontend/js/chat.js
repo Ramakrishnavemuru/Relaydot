@@ -15,6 +15,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   let messages = [];
   let replyingToMessage = null;
   let editingMessage = null;
+  let forwardingMessage = null;
+  let reportingMessageId = null;
+  let threadRoot = null;
+  const threadMessageIds = new Set();
   let pendingAttachments = [];
   let typingTimer = null;
   let isTyping = false;
@@ -67,7 +71,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     {label: pref(conv.id).pinned ? 'Unpin conversation' : 'Pin conversation', icon: 'pin', run: () => updatePreference(conv.id,'pinned')},
     {label: pref(conv.id).favorite ? 'Remove from favorites' : 'Add to favorites', icon: 'star', run: () => updatePreference(conv.id,'favorite')},
     {label: pref(conv.id).muted ? 'Unmute notifications' : 'Mute notifications', icon: 'bell-off', run: () => updatePreference(conv.id,'muted')},
-    {label: pref(conv.id).archived ? 'Move to all chats' : 'Archive conversation', icon: 'archive', run: () => updatePreference(conv.id,'archived')}
+    {label: pref(conv.id).archived ? 'Move to all chats' : 'Archive conversation', icon: 'archive', run: () => updatePreference(conv.id,'archived')},
+    {label:'Saved messages',icon:'bookmark',run:openSavedMessages},
+    {label:'Scheduled messages',icon:'clock',run:openScheduledMessages}
   ]);
 
   // DOM Elements
@@ -184,6 +190,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     WSClient.on(CONFIG.EVENTS.MESSAGE_DELETE, (data) => {
       handleMessageDeleted(data);
     });
+    WSClient.on('message.pinned', data => {
+      const msg = messages.find(m => m.id === data.message_id);
+      if (msg) { msg.pinned_at = data.pinned ? new Date().toISOString() : null;
+        document.getElementById(`msg-${msg.id}`)?.replaceWith(createMessageElement(msg)); }
+    });
+    WSClient.on('message.scheduled.sent', () => { if (activeConversation) loadMessageHistory(activeConversation,true); });
+    WSClient.on('message.scheduled.failed', data => Utils.showToast(data.error || 'Scheduled message failed.', 'error'));
 
     // Reaction updated
     WSClient.on(CONFIG.EVENTS.REACTION, (data) => {
@@ -256,7 +269,22 @@ document.addEventListener('DOMContentLoaded', async () => {
       const requestedConversation = Number(new URLSearchParams(location.search).get('conversation'));
       if (requestedConversation && !activeConversation) {
         const requested = conversations.find(c => c.id === requestedConversation);
-        if (requested) selectConversation(requested);
+        if (requested) {
+          await selectConversation(requested);
+          const requestedMessage = Number(new URLSearchParams(location.search).get('message'));
+          if (requestedMessage) {
+            try { const msg = await API.get(`/messages/${requestedMessage}`);
+              if (msg.conversation_id !== requestedConversation) return;
+              if (msg.thread_root_id) await openThread(msg);
+              else {
+                if (!messages.some(item => item.id === msg.id)) { messages = await API.get(
+                  `/messages/conversation/${requestedConversation}`,{before_id:msg.id+1,limit:50}); renderMessages();
+                  document.getElementById('history-context').classList.remove('hidden'); }
+                document.getElementById(`msg-${msg.id}`)?.scrollIntoView({block:'center'});
+              }
+            } catch { Utils.showToast('This message is unavailable.','info'); }
+          }
+        }
       }
     } catch {
       if (request !== conversationRequest) return;
@@ -484,7 +512,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const receiptHtml = isOwn ? Utils.renderReceiptTicks(msg.status) : '';
 
     const sharedPost = !isDeleted && typeof msg.content === 'string' && msg.content.match(/^Shared post by ([^\n]+)\n([^\n]*)\n\/post\/(\d+)$/);
-    const messageBody = sharedPost ? `<a class="chat-post-preview" href="social.html?view=post&id=${encodeURIComponent(sharedPost[3])}"><span>${AppUI.icon('messages')} Shared post</span><strong>${Utils.escapeHTML(sharedPost[1])}</strong><small>${Utils.escapeHTML(sharedPost[2])}</small><em>Open post ${AppUI.icon('arrow-right')}</em></a>` : AppUI.linkify(msg.content);
+    const sharedReel = !isDeleted && typeof msg.content === 'string' && msg.content.match(/^Shared Reel by (@[A-Za-z0-9_]{3,30})\n([^\n]*)\n\/reels\.html\?id=([a-f0-9]{32})$/);
+    const messageBody = sharedReel ? `<a class="chat-post-preview chat-reel-preview" data-reel-id="${sharedReel[3]}" href="reels.html?id=${sharedReel[3]}"><span>${AppUI.icon('video')} Shared Reel</span><strong>${Utils.escapeHTML(sharedReel[1])}</strong><small>${Utils.escapeHTML(sharedReel[2])}</small><em>Watch Reel ${AppUI.icon('arrow-right')}</em></a>` : sharedPost ? `<a class="chat-post-preview" href="social.html?view=post&id=${encodeURIComponent(sharedPost[3])}"><span>${AppUI.icon('messages')} Shared post</span><strong>${Utils.escapeHTML(sharedPost[1])}</strong><small>${Utils.escapeHTML(sharedPost[2])}</small><em>Open post ${AppUI.icon('arrow-right')}</em></a>` : AppUI.linkify(msg.content);
     bubble.innerHTML = `
       ${showAvatar ? `<img src="${Utils.escapeHTML(avatar)}" alt="${Utils.escapeHTML(senderName)}" class="message-sender-avatar" title="${Utils.escapeHTML(senderName)}" />` : ''}
       <div class="message-bubble ${isDeleted ? 'deleted-bubble' : ''}">
@@ -499,6 +528,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         </div>
         ${reactionsHtml}
 
+        ${!isDeleted && (msg.is_forwarded || msg.pinned_at || msg.expires_at || msg.thread_reply_count || msg.thread_root_id) ? `<div class="message-extra">${msg.is_forwarded ? '<span>Forwarded</span>' : ''}${msg.pinned_at ? '<span>Pinned</span>' : ''}${msg.expires_at ? '<span>Disappearing</span>' : ''}${msg.thread_root_id ? '<span>Thread reply</span>' : ''}${msg.thread_reply_count ? `<button class="message-thread-link" type="button">${msg.thread_reply_count} ${msg.thread_reply_count === 1 ? 'reply' : 'replies'} in thread</button>` : ''}</div>` : ''}
+
         ${msg.status === 'FAILED' ? '<div class="message-failure"><span>Message couldn’t be sent</span><button class="text-button btn-retry-message">Retry</button></div>' : ''}
         ${!isDeleted && !isLocal ? `
           <div class="message-actions-hover" aria-label="Message actions">
@@ -506,6 +537,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             <button class="action-icon-btn btn-reply" title="Reply" aria-label="Reply">${AppUI.icon('reply')}</button>
             <button class="action-icon-btn btn-copy" title="Copy message" aria-label="Copy message">${AppUI.icon('copy')}</button>
             <button class="action-icon-btn btn-forward" title="Forward" aria-label="Forward">${AppUI.icon('forward')}</button>
+            <button class="action-icon-btn btn-thread" title="Open thread" aria-label="Open thread">${AppUI.icon('messages')}</button>
+            <button class="action-icon-btn btn-more-message" title="More actions" aria-label="More message actions">${AppUI.icon('more')}</button>
             ${isOwn ? `<button class="action-icon-btn btn-edit" title="Edit" aria-label="Edit">${AppUI.icon('edit')}</button>` : ''}
             ${isOwn || (activeConversation?.type === 'GROUP' && isGroupAdmin(activeConversation)) ? `<button class="action-icon-btn btn-delete" title="Delete" aria-label="Delete">${AppUI.icon('trash')}</button>` : ''}
           </div>` : ''}
@@ -525,12 +558,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     bubble.querySelector('.message-bubble').tabIndex = 0;
     bubble.querySelector('.message-bubble').setAttribute('aria-label', `${isOwn ? 'You' : senderName}, ${isDeleted ? 'Message deleted' : msg.content || 'Attachment'}, ${timeStr}`);
+    const reelCard = bubble.querySelector('.chat-reel-preview');
+    if (reelCard) API.get(`/reels/${reelCard.dataset.reelId}`).then(reel => {
+      if (!reelCard.isConnected || !reel.thumbnail_url) return;
+      const cover = document.createElement('img'); cover.src = API.resolveUrl(reel.thumbnail_url);
+      cover.alt = `Cover for Reel by ${reel.creator.username}`; cover.loading = 'lazy';
+      reelCard.prepend(cover);
+    }).catch(() => { if (reelCard.isConnected) reelCard.querySelector('em').textContent = 'Reel unavailable'; });
     bubble.querySelector('.btn-retry-message')?.addEventListener('click', () => dispatchMessage(msg));
     bubble.querySelector('.btn-copy')?.addEventListener('click', async () => {
       try { await navigator.clipboard.writeText(msg.content); Utils.showToast('Copied to clipboard', 'success'); }
       catch { Utils.showToast('Copy is unavailable in this browser.', 'error'); }
     });
     bubble.querySelector('.btn-forward')?.addEventListener('click', () => setupForwardModal(msg));
+    bubble.querySelector('.btn-thread')?.addEventListener('click', () => openThread(msg));
+    bubble.querySelector('.message-thread-link')?.addEventListener('click', () => openThread(msg));
+    bubble.querySelector('.btn-more-message')?.addEventListener('click', e => openMessageMenu(e.currentTarget,msg));
     bubble.querySelector('.message-bubble').addEventListener('contextmenu', e => { e.preventDefault(); bubble.classList.toggle('actions-visible'); });
     let longPress;
     bubble.addEventListener('pointerdown', e => { if (e.pointerType === 'touch') longPress = setTimeout(() => bubble.classList.add('actions-visible'), 500); });
@@ -721,25 +764,88 @@ document.addEventListener('DOMContentLoaded', async () => {
       conversation_id: activeConversation.id, content: content || '',
       message_type: pendingAttachments.length ? pendingAttachments[0].file_type.startsWith('image/') ? 'IMAGE' : 'FILE' : 'TEXT',
       reply_to_id: replyingToMessage?.id || null,
+      expires_in_seconds: Number(document.getElementById('message-expiry').value) || null,
       attachments: pendingAttachments.map(({file_url,file_name,file_type,file_size,public_id}) => ({file_url,file_name,file_type,file_size,public_id}))
     };
-    elements.messageInput.value = ''; pendingAttachments = []; renderAttachmentPreviews(); hideReplyPreview(); stopTyping(); saveDraft(); syncComposer(); renderConversationsList();
+    elements.messageInput.value = ''; document.getElementById('message-expiry').value = ''; pendingAttachments = []; renderAttachmentPreviews(); hideReplyPreview(); stopTyping(); saveDraft(); syncComposer(); renderConversationsList();
     await queueMessage(payload);
   };
   const setupForwardModal = msg => {
+    forwardingMessage = msg;
     Utils.openModal('modal-forward');
     const list = document.getElementById('forward-conversations'); list.innerHTML = '';
     if (!conversations.length) { list.innerHTML = '<p class="empty-list-notice">Start a conversation first.</p>'; return; }
     conversations.forEach(conv => {
-      const button = document.createElement('button'); button.className = 'forward-target';
-      button.innerHTML = `<img src="${Utils.escapeHTML(chatAvatar(conv))}" alt="" /><span>${Utils.escapeHTML(chatName(conv))}</span>${AppUI.icon('forward')}`;
-      button.onclick = () => {
-        Utils.closeModal('modal-forward');
-        queueMessage({conversation_id:conv.id, content:msg.content, message_type:msg.message_type, attachments:msg.attachments.map(({file_url,file_name,file_type,file_size,public_id}) => ({file_url,file_name,file_type,file_size,public_id}))});
-        selectConversation(conv);
-      };
-      list.append(button);
+      const label = document.createElement('label'); label.className = 'forward-target';
+      label.innerHTML = `<input type="checkbox" value="${conv.id}" name="destination"><img src="${Utils.escapeHTML(chatAvatar(conv))}" alt="" /><span>${Utils.escapeHTML(chatName(conv))}</span>`;
+      list.append(label);
     });
+  };
+  const threadItem = msg => `<div class="thread-item" data-thread-message="${msg.id}"><strong>${Utils.escapeHTML(msg.sender?.display_name || msg.sender?.username || 'Member')}</strong><div>${msg.is_deleted ? 'This message was deleted' : AppUI.linkify(msg.content)}</div><small>${Utils.formatMessageTime(msg.created_at)}</small></div>`;
+  const loadThreadPage = async offset => {
+    const list = document.getElementById('thread-replies');
+    list.querySelector('.thread-load-more')?.remove();
+    try {
+      const rows = await API.get(`/messages/${threadRoot.id}/thread`, {limit:30, offset});
+      if (offset === 0) list.innerHTML = rows.length ? '' : '<p class="empty-list-notice">No replies yet. Start the thread.</p>';
+      rows.forEach(row => {
+        threadMessageIds.add(row.id);
+        list.insertAdjacentHTML('beforeend', threadItem(row));
+      });
+      if (rows.length === 30) {
+        const button = document.createElement('button');
+        button.className = 'btn btn-secondary thread-load-more'; button.textContent = 'Load more replies';
+        button.onclick = () => loadThreadPage(offset + rows.length);
+        list.append(button);
+      }
+    } catch (error) { list.insertAdjacentHTML('beforeend', `<p class="empty-list-notice">${Utils.escapeHTML(error.message)}</p>`); }
+  };
+  const openThread = async msg => {
+    threadRoot = msg.thread_root_id ? messages.find(m => m.id === msg.thread_root_id) || await API.get(`/messages/${msg.thread_root_id}`) : msg;
+    Utils.openModal('modal-thread');
+    document.getElementById('thread-root').innerHTML = `<strong>${Utils.escapeHTML(threadRoot.sender?.display_name || threadRoot.sender?.username || 'Member')}</strong><div>${AppUI.linkify(threadRoot.content || 'Attachment')}</div>`;
+    const list = document.getElementById('thread-replies'); list.innerHTML = '<p class="empty-list-notice">Loading replies…</p>';
+    await loadThreadPage(0);
+  };
+  const openMessageMenu = (trigger, msg) => {
+    const choices = [
+      {label:msg.bookmarked ? 'Remove saved message' : 'Save message',icon:'bookmark',run:async()=>{
+        const updated = msg.bookmarked ? await API.delete(`/messages/${msg.id}/bookmark`) : await API.post(`/messages/${msg.id}/bookmark`,{});
+        msg.bookmarked = updated.bookmarked; Utils.showToast(msg.bookmarked ? 'Message saved' : 'Message removed from saved','success');
+      }},
+      {label:'Copy message link',icon:'copy',run:async()=>{ await navigator.clipboard.writeText(`${location.origin}/chat.html?conversation=${msg.conversation_id}&message=${msg.id}`); Utils.showToast('Message link copied','success'); }},
+      {label:'Report message',icon:'alert-circle',run:()=>{ reportingMessageId = msg.id; Utils.openModal('modal-report-message'); }}
+    ];
+    if (activeConversation?.type === 'DIRECT' || isGroupAdmin(activeConversation)) choices.unshift({
+      label:msg.pinned_at ? 'Unpin message' : 'Pin message',icon:'pin',run:async()=>{
+        const updated = msg.pinned_at ? await API.delete(`/messages/${msg.id}/pin`) : await API.post(`/messages/${msg.id}/pin`,{});
+        msg.pinned_at = updated.pinned_at; document.getElementById(`msg-${msg.id}`)?.replaceWith(createMessageElement(msg));
+      }});
+    AppUI.showMenu(trigger,choices,'Message actions');
+  };
+  const openSavedMessages = async () => {
+    Utils.openModal('modal-saved-messages'); const list = document.getElementById('saved-messages-list'); list.textContent = 'Loading…';
+    try { const rows = await API.get('/messages/bookmarks');
+      list.innerHTML = rows.length ? rows.map(msg => `<button class="saved-message-row" data-conversation="${msg.conversation_id}" data-message="${msg.id}">${Utils.escapeHTML(msg.content || 'Attachment')}<small>${Utils.formatMessageTime(msg.created_at)}</small></button>`).join('') : '<p class="empty-list-notice">No saved messages yet.</p>';
+      list.querySelectorAll('button').forEach((button,index) => button.onclick = async () => {
+        Utils.closeModal('modal-saved-messages'); const msg = rows[index];
+        const conv = conversations.find(c => c.id === msg.conversation_id); if (!conv) return;
+        await selectConversation(conv);
+        if (msg.thread_root_id) { await openThread(msg); return; }
+        if (!messages.some(item => item.id === msg.id)) {
+          const older = await API.get(`/messages/conversation/${conv.id}`,{before_id:msg.id+1,limit:50});
+          messages = older; renderMessages(); document.getElementById('history-context').classList.remove('hidden');
+        }
+        document.getElementById(`msg-${msg.id}`)?.scrollIntoView({block:'center'});
+      });
+    } catch (error) { list.textContent = error.message; }
+  };
+  const openScheduledMessages = async () => {
+    Utils.openModal('modal-scheduled-messages'); const list = document.getElementById('scheduled-messages-list'); list.textContent = 'Loading…';
+    try { const rows = await API.get('/messages/scheduled');
+      list.innerHTML = rows.length ? rows.map(item => `<div class="schedule-row"><div>${Utils.escapeHTML(item.content)}<small>${new Date(item.send_at).toLocaleString()}</small></div><button class="btn btn-secondary" data-id="${item.id}">Cancel</button></div>`).join('') : '<p class="empty-list-notice">No scheduled messages.</p>';
+      list.querySelectorAll('button').forEach(button => button.onclick = async () => { try { await API.delete(`/messages/scheduled/${button.dataset.id}`); button.closest('.schedule-row').remove(); Utils.showToast('Scheduled message cancelled','success'); } catch (error) { Utils.showToast(error.message,'info'); openScheduledMessages(); } });
+    } catch (error) { list.textContent = error.message; }
   };
 
   // Scroll messages container to bottom
@@ -784,6 +890,23 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Deduplicate REST acknowledgements and socket echoes; preserve the reader’s scroll position.
   const handleIncomingMessage = msg => {
+    if (msg.thread_root_id) {
+      if (threadMessageIds.has(msg.id)) return;
+      threadMessageIds.add(msg.id);
+      const root = messages.find(m => m.id === msg.thread_root_id);
+      if (root) {
+        root.thread_reply_count = (root.thread_reply_count || 0) + 1;
+        document.getElementById(`msg-${root.id}`)?.replaceWith(createMessageElement(root));
+      }
+      if (threadRoot?.id === msg.thread_root_id) {
+        document.querySelector('#thread-replies .empty-list-notice')?.remove();
+        const more = document.querySelector('#thread-replies .thread-load-more');
+        if (more) more.insertAdjacentHTML('beforebegin',threadItem(msg));
+        else document.getElementById('thread-replies').insertAdjacentHTML('beforeend',threadItem(msg));
+      }
+      if (activeConversation?.id === msg.conversation_id && msg.sender_id !== currentUser.id) markRead(activeConversation);
+      return;
+    }
     const exists = messages.find(m => m.id === msg.id);
     if (activeConversation?.id === msg.conversation_id && !exists && !viewingSearchHistory()) {
       const nearBottom = elements.messagesContainer.scrollHeight - elements.messagesContainer.scrollTop - elements.messagesContainer.clientHeight < 160;
@@ -945,6 +1068,45 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     // Send button click
     elements.btnSendMessage.addEventListener('click', sendMessage);
+    document.getElementById('btn-schedule-message').onclick = () => {
+      if (!activeConversation || !elements.messageInput.value.trim()) { Utils.showToast('Write a message before scheduling.','info'); return; }
+      if (pendingAttachments.length) { Utils.showToast('Scheduled attachments are not available yet.','info'); return; }
+      const input = document.getElementById('schedule-at');
+      const soon = new Date(Date.now() + 60_000); input.min = `${soon.getFullYear()}-${String(soon.getMonth()+1).padStart(2,'0')}-${String(soon.getDate()).padStart(2,'0')}T${String(soon.getHours()).padStart(2,'0')}:${String(soon.getMinutes()).padStart(2,'0')}`;
+      input.value = input.min; Utils.openModal('modal-schedule');
+    };
+    document.getElementById('schedule-form').onsubmit = async event => {
+      event.preventDefault(); const button = event.target.querySelector('[type=submit]'); button.disabled = true;
+      try { await API.post('/messages/scheduled',{conversation_id:activeConversation.id,
+        content:elements.messageInput.value.trim(),send_at:new Date(document.getElementById('schedule-at').value).toISOString(),
+        reply_to_id:replyingToMessage?.id || null});
+        elements.messageInput.value = ''; hideReplyPreview(); saveDraft(); syncComposer(); Utils.closeModal('modal-schedule'); Utils.showToast('Message scheduled','success'); }
+      catch (error) { Utils.showToast(error.message,'error'); } finally { button.disabled = false; }
+    };
+    document.getElementById('forward-form').onsubmit = async event => {
+      event.preventDefault(); const ids = [...event.target.querySelectorAll('[name=destination]:checked')].map(input => Number(input.value));
+      if (!ids.length || ids.length > 10) { Utils.showToast('Choose 1 to 10 conversations.','warning'); return; }
+      const button = event.target.querySelector('[type=submit]'); button.disabled = true;
+      try { await API.post(`/messages/${forwardingMessage.id}/forward`,{conversation_ids:ids}); Utils.closeModal('modal-forward'); Utils.showToast(`Forwarded to ${ids.length} ${ids.length === 1 ? 'conversation' : 'conversations'}`,'success'); }
+      catch (error) { Utils.showToast(error.message,'error'); } finally { button.disabled = false; }
+    };
+    document.getElementById('thread-form').onsubmit = async event => {
+      event.preventDefault(); if (!threadRoot || !activeConversation) return;
+      const input = document.getElementById('thread-input'); const value = input.value.trim(); if (!value) return;
+      const button = event.target.querySelector('[type=submit]'); button.disabled = true;
+      try { const reply = await API.post('/messages',{conversation_id:activeConversation.id,content:value,
+        thread_root_id:threadRoot.thread_root_id || threadRoot.id,reply_to_id:threadRoot.id});
+        input.value = ''; handleIncomingMessage(reply); }
+      catch (error) { Utils.showToast(error.message,'error'); } finally { button.disabled = false; }
+    };
+    document.getElementById('report-message-form').onsubmit = async event => {
+      event.preventDefault(); if (!reportingMessageId) return;
+      const button = event.target.querySelector('[type=submit]'); button.disabled = true;
+      try { await API.post('/social/reports',{entity_type:'message',entity_id:reportingMessageId,
+        reason:document.getElementById('message-report-reason').value});
+        Utils.closeModal('modal-report-message'); Utils.showToast('Report submitted','success'); }
+      catch (error) { Utils.showToast(error.message,'error'); } finally { button.disabled = false; }
+    };
 
     // Message input enter key
     elements.messageInput.addEventListener('keydown', (e) => {
@@ -1044,7 +1206,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     Utils.$$('.modal-close, .btn-modal-cancel').forEach(btn => {
       btn.addEventListener('click', () => {
         const modal = btn.closest('.modal-overlay');
-        if (modal) modal.classList.remove('active');
+        if (modal) { modal.classList.remove('active'); if (modal.id === 'modal-thread') threadRoot = null; }
       });
     });
 
@@ -1161,6 +1323,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const recentKey = `relay-searches-${currentUser.id}`;
     let type = scope ? 'messages' : 'chats';
     let request = 0;
+    let searchOffset = 0;
     input.value = initial;
     document.getElementById('search-dialog-title').textContent = scope ? `Search in ${chatName(activeConversation)}` : 'Find a conversation';
     input.placeholder = scope ? 'Search this conversation…' : 'Search people, chats, or messages…';
@@ -1178,18 +1341,30 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('btn-clear-recent-searches').onclick = () => { AppUI.write(recentKey,[]); empty(); };
       }
     };
-    const search = async () => {
+    const search = async (append = false) => {
       const q = input.value.trim(); const req = ++request;
       tabs.forEach(tab => { tab.classList.toggle('active',tab.dataset.searchType === type); tab.setAttribute('aria-pressed',String(tab.dataset.searchType === type)); });
-      if (!q) { empty(); return; }
+      document.getElementById('message-search-filters').classList.toggle('hidden',type !== 'messages');
+      const sender = document.getElementById('search-sender').value.trim().replace(/^@/,'');
+      const has = document.getElementById('search-has').value;
+      const after = document.getElementById('search-after').value;
+      const before = document.getElementById('search-before').value;
+      if (!q && !(type === 'messages' && (sender || has || after || before))) { empty(); return; }
       document.getElementById('btn-clear-message-search').classList.remove('hidden');
-      results.innerHTML = '<div class="skeleton-row" aria-label="Searching"></div><div class="skeleton-row"></div>';
+      if (!append) { searchOffset = 0; results.innerHTML = '<div class="skeleton-row" aria-label="Searching"></div><div class="skeleton-row"></div>'; }
+      else results.querySelector('.search-more')?.remove();
       try {
-        const matches = type === 'contacts' ? await Users.search(q) : type === 'messages' ? await API.get('/search/messages',{q}) : conversations.filter(conv => `${chatName(conv)} ${conv.other_user?.username || ''}`.toLowerCase().includes(q.toLowerCase()));
+        const messageParams = {q, limit:30, offset:searchOffset};
+        if (scope) messageParams.conversation_id = scope;
+        if (sender) messageParams.sender = sender;
+        if (has) messageParams.has = has;
+        if (after) messageParams.after = after;
+        if (before) messageParams.before = before;
+        const matches = type === 'contacts' ? await Users.search(q) : type === 'messages' ? await API.get('/search/messages',messageParams) : conversations.filter(conv => `${chatName(conv)} ${conv.other_user?.username || ''}`.toLowerCase().includes(q.toLowerCase()));
         if (req !== request || input.value.trim() !== q) return;
-        const visible = scope ? matches.filter(m => m.conversation_id === scope) : matches;
-        results.innerHTML = '';
-        if (!visible.length) { results.innerHTML = `<div class="list-empty"><span data-icon="search"></span><h3>No ${type} found</h3><p>Try a different name or keyword.</p></div>`; return; }
+        const visible = matches;
+        if (!append) results.innerHTML = '';
+        if (!visible.length) { if (!append) results.innerHTML = `<div class="list-empty"><span data-icon="search"></span><h3>No ${type} found</h3><p>Try a different name or keyword.</p></div>`; return; }
         visible.forEach(match => {
           if (type === 'contacts') {
             const item = Users.renderUserItem(match, async user => {
@@ -1228,12 +1403,18 @@ document.addEventListener('DOMContentLoaded', async () => {
           }
           results.append(item);
         });
+        if (type === 'messages') { searchOffset += visible.length; if (visible.length === 30) {
+          const more = document.createElement('button'); more.className = 'btn btn-secondary search-more'; more.textContent = 'Load more messages';
+          more.onclick = () => search(true); results.append(more);
+        } }
       } catch { if (req === request) results.innerHTML = '<div class="list-empty"><span data-icon="wifi-off"></span><h3>Search couldn’t load</h3><p>Check your connection and try again.</p></div>'; }
     };
     tabs.forEach(tab => tab.onclick = () => { type = tab.dataset.searchType; search(); });
-    input.oninput = Utils.debounce(search,200);
+    input.oninput = Utils.debounce(() => search(),200);
+    document.getElementById('search-sender').oninput = Utils.debounce(() => search(),250);
+    ['search-has','search-after','search-before'].forEach(id => document.getElementById(id).onchange = () => search());
     document.getElementById('btn-clear-message-search').onclick = () => { input.value = ''; search(); input.focus(); };
-    initial ? search() : empty();
+    search();
   };
 
   const renderSharedContent = () => {

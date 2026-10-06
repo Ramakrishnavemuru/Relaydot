@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#11121a"><title>Reels · Relay</title>
+  <script src="js/icons.js"></script><script src="js/ui.js"></script>
+  <link rel="stylesheet" href="css/global.css"><link rel="stylesheet" href="css/reels.css">
+</head>
+<body class="reels-page">
+  <a class="skip-link" href="#reel-stage">Skip to Reel</a>
+  <div class="reels-shell">
+    <aside class="reels-nav" aria-label="Main navigation">
+      <a class="reels-logo" href="social.html"><span data-icon="messages"></span><b>relay<span>.</span></b></a>
+      <nav>
+        <a href="social.html"><span data-icon="circle"></span>Home</a>
+        <a href="chat.html"><span data-icon="message"></span>Chats</a>
+        <a href="social.html?view=communities"><span data-icon="users"></span>Communities</a>
+        <a href="reels.html" class="active" aria-current="page"><span data-icon="play"></span>Reels</a>
+        <a href="social.html?view=search"><span data-icon="search"></span>Explore</a>
+        <a href="social.html?view=notifications"><span data-icon="bell"></span>Activity</a>
+        <a href="social.html?view=profile"><span data-icon="user"></span>Profile</a>
+      </nav>
+      <button id="create-reel" class="btn btn-primary"><span data-icon="plus"></span> Create Reel</button>
+      <p>Little moments. Bigger stories.</p>
+    </aside>
+    <main class="reels-main" id="reel-stage">
+      <header class="reels-topbar">
+        <div><span class="eyebrow">SEE WHAT MOVES YOU</span><h1>Reels</h1></div>
+        <div class="reels-top-actions"><button id="mobile-create-reel" class="btn btn-primary"><span data-icon="plus"></span> Create</button><a href="social.html" class="mobile-home" aria-label="Home"><span data-icon="circle"></span></a></div>
+      </header>
+      <div class="reels-toolbar">
+        <div class="reels-tabs" role="tablist" aria-label="Reel feed">
+          <button data-mode="for_you" class="active" role="tab" aria-selected="true">For you</button>
+          <button data-mode="following" role="tab" aria-selected="false">Following</button>
+          <button data-mode="trending" role="tab" aria-selected="false">Trending</button>
+          <button data-mode="new" role="tab" aria-selected="false">New</button>
+          <button data-mode="saved" role="tab" aria-selected="false">Saved</button>
+          <button data-mode="mine" role="tab" aria-selected="false">My Reels</button>
+        </div>
+        <form id="reel-search" role="search"><span data-icon="search"></span><input id="reel-query" type="search" placeholder="Search creators, #topics, Reels" aria-label="Search Reels"></form>
+      </div>
+      <div class="reels-viewer">
+        <button id="previous-reel" class="reels-step" aria-label="Previous Reel"><span data-icon="chevron-up"></span></button>
+        <div id="reel-content" class="reel-content" aria-live="polite"><div class="reel-empty"><span data-icon="play"></span><h2>Finding your next moment…</h2></div></div>
+        <button id="next-reel" class="reels-step" aria-label="Next Reel"><span data-icon="chevron-down"></span></button>
+      </div>
+    </main>
+    <aside id="reel-comments" class="reels-comments hidden" aria-label="Reel comments"><div class="comments-header"><h2>Comments</h2><button id="close-comments" aria-label="Close comments">×</button></div><div id="reel-comment-list" class="reel-comment-list"></div><form id="reel-comment-form"><input id="reel-comment-input" maxlength="2000" placeholder="Add a comment…" aria-label="Add a comment" required><button type="submit">Post</button></form></aside>
+  </div>
+  <div id="reel-dialog" class="reel-dialog-overlay hidden" role="presentation"><div class="reel-dialog" role="dialog" aria-modal="true" aria-labelledby="reel-dialog-title"><header><h2 id="reel-dialog-title">Create Reel</h2><button id="close-reel-dialog" aria-label="Close dialog">×</button></header><div id="reel-dialog-body"></div></div></div>
+  <nav class="reels-mobile-nav" aria-label="Mobile navigation"><a href="social.html">Home</a><a href="chat.html">Chats</a><a href="reels.html" aria-current="page">Reels</a><a href="social.html?view=profile">Profile</a></nav>
+  <script src="js/config.js"></script><script src="js/utils.js"></script><script src="js/api.js"></script><script src="js/auth.js"></script><script src="js/websocket.js"></script><script src="js/reels.js"></script>
+</body>
+</html>

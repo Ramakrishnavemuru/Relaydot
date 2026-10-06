@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#5b55d6">
   <title>Relay — Messages</title>
   <script src="js/icons.js?v=20261003-final"></script>
-  <script src="js/ui.js?v=20261003-final"></script>
+  <script src="js/ui.js?v=20261004-platform"></script>
   <link rel="stylesheet" href="css/global.css?v=20261003-final">
   <link rel="stylesheet" href="css/chat.css?v=20261003-final">
   <link rel="stylesheet" href="css/profile.css?v=20261003-final">
@@ -23,6 +23,7 @@
       <div class="rail-links">
         <a class="rail-button" href="social.html" title="Home" aria-label="Home"><span data-icon="circle"></span><span>Home</span></a>
         <button class="rail-button active" id="nav-messages" title="Messages" aria-label="Messages" aria-current="page"><span data-icon="message"></span><span>Chats</span></button>
+        <a class="rail-button" href="reels.html" title="Reels" aria-label="Reels"><span data-icon="video"></span><span>Reels</span></a>
         <a class="rail-button rail-mobile-only" href="social.html?compose=1" title="Create post" aria-label="Create post"><span data-icon="plus"></span><span>Create</span></a>
         <button class="rail-button" aria-pressed="false" id="nav-stories" title="Stories" aria-label="Stories"><span data-icon="circle"></span><span>Stories</span></button>
         <button class="rail-button" id="btn-new-group" title="New group" aria-label="New group"><span data-icon="users"></span><span>Groups</span></button>
@@ -183,6 +184,10 @@
               maxlength="10000"
               rows="1"
             ></textarea>
+
+            <label class="sr-only" for="message-expiry">Disappearing message duration</label>
+            <select id="message-expiry" class="message-expiry" title="Disappearing message duration"><option value="">Keep</option><option value="10">10 sec</option><option value="60">1 min</option><option value="3600">1 hour</option><option value="86400">1 day</option><option value="604800">7 days</option></select>
+            <button id="btn-schedule-message" class="icon-btn" type="button" title="Schedule message" aria-label="Schedule message"><span data-icon="clock"></span></button>
 
             <!-- Send Button -->
             <button id="btn-send-message" class="btn-send" title="Send message" disabled><span data-icon="send"></span></button>
@@ -381,6 +386,7 @@
           <input type="text" id="search-query-input" class="form-input" placeholder="Search people, chats, or messages…" aria-label="Search people, chats, or messages" /><button id="btn-clear-message-search" class="icon-btn clear-search hidden" aria-label="Clear search"><span data-icon="x"></span></button>
         </div>
         <div id="search-type-tabs" class="search-type-tabs" aria-label="Search categories"><button class="chat-filter active" data-search-type="chats" aria-pressed="true">Chats</button><button class="chat-filter" data-search-type="contacts" aria-pressed="false">People</button><button class="chat-filter" data-search-type="messages" aria-pressed="false">Messages</button></div>
+        <div id="message-search-filters" class="message-search-filters hidden"><input id="search-sender" class="form-input" placeholder="From @username" aria-label="Sender username"><select id="search-has" class="form-input" aria-label="Attachment filter"><option value="">Any content</option><option value="file">Has file</option><option value="image">Has image</option></select><label>After <input id="search-after" type="date" class="form-input"></label><label>Before <input id="search-before" type="date" class="form-input"></label></div>
         <div id="search-messages-results" style="max-height: 400px; overflow-y: auto;">
           <div class="empty-list-notice">Type a keyword to search</div>
         </div>
@@ -677,13 +683,18 @@
   </div>
 
 
-  <div id="modal-forward" class="modal-overlay"><div class="modal-card"><div class="modal-header"><h2 class="modal-title">Forward message</h2><button class="icon-btn modal-close" aria-label="Close forward dialog"><span data-icon="x"></span></button></div><div class="modal-body"><p class="settings-description">Choose a conversation to share this message with.</p><div id="forward-conversations"></div></div></div></div>
+  <div id="modal-forward" class="modal-overlay"><form id="forward-form" class="modal-card"><div class="modal-header"><h2 class="modal-title">Forward message</h2><button type="button" class="icon-btn modal-close" aria-label="Close forward dialog"><span data-icon="x"></span></button></div><div class="modal-body"><p class="settings-description">Choose up to 10 conversations.</p><div id="forward-conversations"></div></div><div class="modal-footer"><button type="button" class="btn btn-secondary modal-close">Cancel</button><button type="submit" class="btn btn-primary">Forward</button></div></form></div>
+  <div id="modal-thread" class="modal-overlay"><div class="modal-card thread-panel" role="dialog" aria-modal="true" aria-labelledby="thread-title"><div class="modal-header"><h2 id="thread-title" class="modal-title">Thread</h2><button class="icon-btn modal-close" aria-label="Close thread"><span data-icon="x"></span></button></div><div class="modal-body"><div id="thread-root" class="thread-root"></div><div id="thread-replies" class="thread-replies" role="log" aria-label="Thread replies"></div></div><form id="thread-form" class="thread-form"><label class="sr-only" for="thread-input">Reply in thread</label><textarea id="thread-input" maxlength="10000" required placeholder="Reply in thread…"></textarea><button class="btn btn-primary" type="submit">Reply</button></form></div></div>
+  <div id="modal-schedule" class="modal-overlay"><form id="schedule-form" class="modal-card"><div class="modal-header"><h2 class="modal-title">Schedule message</h2><button type="button" class="icon-btn modal-close" aria-label="Close schedule dialog"><span data-icon="x"></span></button></div><div class="modal-body"><p class="settings-description">Your message will send even when this browser is closed.</p><label class="form-label" for="schedule-at">Send at</label><input id="schedule-at" type="datetime-local" class="form-input" required></div><div class="modal-footer"><button type="button" class="btn btn-secondary modal-close">Cancel</button><button class="btn btn-primary" type="submit">Schedule</button></div></form></div>
+  <div id="modal-saved-messages" class="modal-overlay"><div class="modal-card"><div class="modal-header"><h2 class="modal-title">Saved messages</h2><button class="icon-btn modal-close" aria-label="Close saved messages"><span data-icon="x"></span></button></div><div class="modal-body" id="saved-messages-list"></div></div></div>
+  <div id="modal-scheduled-messages" class="modal-overlay"><div class="modal-card"><div class="modal-header"><h2 class="modal-title">Scheduled messages</h2><button class="icon-btn modal-close" aria-label="Close scheduled messages"><span data-icon="x"></span></button></div><div class="modal-body" id="scheduled-messages-list"></div></div></div>
+  <div id="modal-report-message" class="modal-overlay"><form id="report-message-form" class="modal-card"><div class="modal-header"><h2 class="modal-title">Report message</h2><button type="button" class="icon-btn modal-close" aria-label="Close report"><span data-icon="x"></span></button></div><div class="modal-body"><label class="form-label" for="message-report-reason">Reason</label><select id="message-report-reason" class="form-input"><option value="spam">Spam</option><option value="harassment">Harassment</option><option value="impersonation">Impersonation</option><option value="inappropriate">Inappropriate content</option><option value="scam">Scam</option><option value="other">Other</option></select></div><div class="modal-footer"><button type="button" class="btn btn-secondary modal-close">Cancel</button><button class="btn btn-primary" type="submit">Send report</button></div></form></div>
   <div id="modal-edit-group" class="modal-overlay"><form class="modal-card" id="edit-group-form"><div class="modal-header"><h2 class="modal-title">Edit group</h2><button type="button" class="icon-btn modal-close"><span data-icon="x"></span></button></div><div class="modal-body"><div class="form-group"><label for="edit-group-name" class="form-label">Group name</label><input id="edit-group-name" class="form-input" required maxlength="100" /></div><div class="form-group"><label for="edit-group-description" class="form-label">Description</label><textarea id="edit-group-description" class="form-textarea" rows="3"></textarea></div></div><div class="modal-footer"><button type="button" class="btn btn-secondary modal-close">Cancel</button><button id="btn-save-group" class="btn btn-primary" type="submit">Save changes</button></div></form></div>
   <div id="modal-add-member" class="modal-overlay"><div class="modal-card"><div class="modal-header"><h2 class="modal-title">Add a member</h2><button class="icon-btn modal-close"><span data-icon="x"></span></button></div><div class="modal-body"><label for="add-member-search" class="sr-only">Find people</label><input id="add-member-search" type="search" class="form-input" placeholder="Find a person by name or username…" /><div id="add-member-results"></div></div></div></div>
   <div id="modal-attachment-preview" class="modal-overlay"><div class="modal-card attachment-preview-modal"><div class="modal-header"><h2 id="attachment-preview-title" class="modal-title truncate">Image</h2><button class="icon-btn modal-close" aria-label="Close image preview"><span data-icon="x"></span></button></div><div class="modal-body"><img id="attachment-preview-image" alt="" /></div><div class="modal-footer"><a id="attachment-preview-download" class="btn btn-secondary" target="_blank" rel="noopener noreferrer"><span data-icon="external-link"></span>Open original</a></div></div></div>
 
   <!-- Scripts -->
-  <script src="js/config.js?v=20261003-final"></script>
+  <script src="js/config.js?v=20261004-platform"></script>
   <script src="js/utils.js?v=20261003-final"></script>
   <script src="js/api.js?v=20261003-final"></script>
   <script src="js/passkeys.js?v=20261003-final"></script>
@@ -696,6 +707,6 @@
   <script src="js/users.js?v=20261003-final"></script>
   <script src="js/groups.js?v=20261003-final"></script>
   <script src="js/profile.js?v=20261003-final"></script>
-  <script src="js/chat.js?v=20261003-final"></script>
+  <script src="js/chat.js?v=20261004-platform3"></script>
 </body>
 </html>
