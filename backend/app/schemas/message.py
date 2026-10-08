@@ -65,6 +65,7 @@ class MessageCreate(BaseModel):
 class ScheduledMessageCreate(BaseModel):
     conversation_id: int
     content: str = Field(..., min_length=1, max_length=10000)
+    expires_in_seconds: Optional[int] = Field(None, ge=10, le=604800)
     send_at: datetime
     reply_to_id: Optional[int] = None
     thread_root_id: Optional[int] = None

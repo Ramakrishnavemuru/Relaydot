@@ -351,6 +351,8 @@ class ConversationService:
                 .filter(
                     Message.conversation_id == c.id,
                     Message.sender_id != user_id,
+                    Message.deleted_at.is_(None),
+                    or_(Message.expires_at.is_(None), Message.expires_at > datetime.now(timezone.utc)),
                     ~Message.id.in_(read_subquery)
                 )
                 .scalar() or 0

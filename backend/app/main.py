@@ -4,9 +4,11 @@ import json
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Query, status
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Query, Request, status
+from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import inspect
 
@@ -59,6 +61,8 @@ def run_schema_migrations():
                     conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_messages_thread_root_id ON messages (thread_root_id)")
                     conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_messages_expires_at ON messages (expires_at)")
                     conn.exec_driver_sql("CREATE UNIQUE INDEX IF NOT EXISTS ux_messages_scheduled_message_id ON messages (scheduled_message_id)")
+                if "scheduled_messages" in existing_tables:
+                    conn.exec_driver_sql("ALTER TABLE scheduled_messages ADD COLUMN IF NOT EXISTS expires_in_seconds INTEGER")
                 if "reel_comments" in existing_tables:
                     conn.exec_driver_sql("ALTER TABLE reel_comments ADD COLUMN IF NOT EXISTS pinned_at TIMESTAMP")
             return
@@ -92,6 +96,9 @@ def run_schema_migrations():
                 conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_messages_thread_root_id ON messages (thread_root_id)")
                 conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_messages_expires_at ON messages (expires_at)")
                 conn.exec_driver_sql("CREATE UNIQUE INDEX IF NOT EXISTS ux_messages_scheduled_message_id ON messages (scheduled_message_id)")
+            scheduled_cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(scheduled_messages)").fetchall()}
+            if scheduled_cols and "expires_in_seconds" not in scheduled_cols:
+                conn.exec_driver_sql("ALTER TABLE scheduled_messages ADD COLUMN expires_in_seconds INTEGER")
             reel_comment_cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(reel_comments)").fetchall()}
             if reel_comment_cols and "pinned_at" not in reel_comment_cols:
                 conn.exec_driver_sql("ALTER TABLE reel_comments ADD COLUMN pinned_at DATETIME")
@@ -287,7 +294,41 @@ async def websocket_endpoint(
         await manager.disconnect(websocket, user.id, db)
 
 
-# Mount frontend directory for easy full-stack hosting
-frontend_dir = BASE_DIR.parent / "frontend"
-if frontend_dir.exists():
-    app.mount("/", StaticFiles(directory=str(frontend_dir), html=True), name="frontend")
+# Serve the built React client. API and upload routes above take precedence.
+class SPAStaticFiles(StaticFiles):
+    async def get_response(self, path: str, scope):
+        try:
+            return await super().get_response(path, scope)
+        except HTTPException as exc:
+            if exc.status_code == 404 and scope["method"] in {"GET", "HEAD"} and "." not in Path(path).name:
+                return await super().get_response("index.html", scope)
+            raise
+
+
+client_dist = BASE_DIR.parent / "client" / "dist"
+if client_dist.exists():
+    @app.get("/", include_in_schema=False)
+    def react_home():
+        return RedirectResponse("/app/", status_code=307)
+
+    @app.get("/{page}.html", include_in_schema=False)
+    def old_entrypoints(page: str, request: Request):
+        routes = {"social": "/app/", "chat": "/app/chats", "reels": "/app/reels",
+                  "login": "/app/login", "register": "/app/register", "profile": "/app/profile",
+                  "settings": "/app/settings", "index": "/app/"}
+        target = routes.get(page, "/app/")
+        view = request.query_params.get("view")
+        identifier = request.query_params.get("id", "")
+        if page == "social":
+            target = {"post": f"/app/posts/{identifier}", "bookmarks": "/app/bookmarks",
+                      "communities": "/app/communities", "community": f"/app/communities/{identifier}",
+                      "hashtag": f"/app/topics/{identifier}", "notifications": "/app/notifications"}.get(view, "/app/")
+        elif page == "chat" and request.query_params.get("conversation", "").isdigit():
+            target = f"/app/chats?id={request.query_params['conversation']}"
+        elif page == "reels" and identifier:
+            target = f"/app/reels?id={identifier}"
+        elif page == "profile" and identifier.isdigit():
+            target = f"/app/profile/{identifier}"
+        return RedirectResponse(target, status_code=307)
+
+    app.mount("/app", SPAStaticFiles(directory=str(client_dist), html=True), name="react-client")

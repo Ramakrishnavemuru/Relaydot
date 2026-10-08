@@ -21,7 +21,7 @@ from app.schemas.auth import (
     ResetPasswordRequest
 )
 from app.schemas.user import UserResponse
-from app.services.auth_service import AuthService
+from app.services.auth_service import AuthService, demo_codes_enabled
 from app.security.dependencies import get_current_user
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -237,7 +237,7 @@ def passkey_login_verify(
     db: Session = Depends(get_db)
 ):
     """Verify passkey assertion and log in passwordlessly."""
-    return AuthService.verify_passkey_login(db, req.response, request, response)
+    return AuthService.verify_passkey_login(db, req.response, req.challenge_id, request, response)
 
 
 @router.get("/passkeys")
@@ -280,7 +280,7 @@ def forgot_password(req: ForgotPasswordRequest, db: Session = Depends(get_db)):
     code = AuthService.create_reset_code(db, req.email)
     return {
         "message": "Password reset code sent (if email exists).",
-        "demo_code": code
+        "demo_code": code if demo_codes_enabled() else None
     }
 
 

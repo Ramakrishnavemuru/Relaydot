@@ -1,61 +1,19 @@
 # Relay — messaging, social feed, and communities
 
-A unified communication app built with **FastAPI**, **WebSockets**, **SQLAlchemy**, and **vanilla HTML/CSS/JavaScript**. Existing chats and accounts share one backend with the social feed and communities.
+A unified communication app built with **React, TypeScript, Vite, TanStack Query, Zustand, Tailwind CSS, FastAPI, WebSockets, and SQLAlchemy**. Existing chats and accounts share one backend with the social feed and communities.
 
 ---
 
 ## 🚀 Features
 
-- **Social feed**: text, uploaded image/video/GIF, polls, hashtags, mentions, threads, reposts, quotes, replies, reactions, bookmarks, and chat sharing.
-- **People and discovery**: public profiles, follows, For You and Following feeds, trends, global search, and privacy controls.
-- **Communities**: member roles, moderated posts, and a group chat powered by the existing messaging WebSocket.
-- **Stories and activity**: expiring text/media stories, viewer privacy, persistent activity notifications, and live WebSocket updates.
-- **Reels**: vertical short-video viewer, MP4/WebM upload or browser recording, background FFmpeg processing, cover frames, captions, visibility, drafts, likes, threaded and pinned comments, saved Reels, search, chat sharing, archive controls, and creator analytics.
+- **Social**: For You and Following feeds, posts with media and polls, replies, reactions, reposts, bookmarks, topics, profiles, follows, and search.
+- **Messaging**: direct and group chats with real-time updates, attachments, message replies and actions, disappearing messages, scheduled sends, group management, and voice/video calling.
+- **Stories and Reels**: expiring text/media stories with replies, plus a vertical Reel feed with upload, comments, likes, saves, and creator editing.
+- **Communities**: discovery, creation, joining, posts, and linked group chats.
+- **Account**: password, one-time-code, and passkey sign-in; registration verification; password recovery; profile images; privacy controls; sessions and two-factor authentication.
+- **Responsive UI**: desktop columns and mobile navigation in the same React application.
 
-- **🔐 Robust Authentication & Security**:
-  - User Registration, Login, Logout
-  - Secure bcrypt password hashing with salt
-  - JWT Bearer Token authorization
-  - Change password & Forgot/Reset password flows
-  - Strict input validation via Pydantic & Regex sanitization
-  - CORS configuration and authorization verification on every request
-
-- **👤 User Profiles & Privacy**:
-  - Search users by username or display name
-  - Change display name, bio, and profile picture
-  - Online presence indicator & "Last seen" timestamps
-  - Granular privacy toggles: hide/show last seen, hide/show online status, hide/show read receipts
-  - Block & unblock users with backend enforcement preventing direct messages
-
-- **💬 1-to-1 & Group Messaging**:
-  - Instant real-time messaging via WebSockets with persistent storage in SQLite
-  - Group chats: Create groups, add/remove members, promote/demote admins, leave group, customize group name and avatar
-  - Message replies with quote preview
-  - Edit sent messages with `(edited)` indicator
-  - Soft delete messages ("This message was deleted")
-  - Emoji reactions (👍, ❤️, 😂, 😮, 😢, 🔥, 🎉) with toggle support
-  - Read receipts (`✓` Sent, `✓✓` Delivered, `✓✓` Read)
-  - Ephemeral typing indicators ("Rahul is typing...") with bouncing animation
-  - Search messages across all joined conversations
-  - Message threads, forwarding to multiple chats, pinning, and private saved messages
-  - Scheduled text messages with database-backed delivery and cancellation
-  - Disappearing messages (10 seconds to 7 days) and per-conversation drafts in this browser
-  - Search by conversation, sender, date, and attachment type
-
-- **📎 File & Media Sharing**:
-  - Cloudinary free tier integration with seamless local storage fallback
-  - Image previews inline, documents and PDFs with download links and file size display
-  - Upload size limit, file signature checks for common media, and file type validation
-
-- **🔔 Notifications**:
-  - Web Audio API synthesized notification chimes (0 external audio dependencies)
-  - Browser Desktop Web Notifications API integration
-  - Unread message counters on conversation list
-
-- **📱 Fully Responsive Design**:
-  - Sleek desktop multi-column interface
-  - Mobile sliding drawer interface with back navigation
-  - Light and dark themes across chat, feed, and communities
+The FastAPI backend also exposes advanced moderation, Reel analytics, and other capabilities through `/docs`. Some of those controls do not yet have dedicated React screens.
 
 ---
 
@@ -63,7 +21,7 @@ A unified communication app built with **FastAPI**, **WebSockets**, **SQLAlchemy
 
 | Component | Technology |
 |---|---|
-| **Frontend** | HTML5, CSS3, Vanilla JavaScript (ES6+) |
+| **Frontend** | React 19, TypeScript, Vite, TanStack Query, Zustand, Tailwind CSS 4 |
 | **Backend** | Python 3.10+, FastAPI, Starlette |
 | **Real-time** | WebSockets |
 | **Database** | SQLite or PostgreSQL via SQLAlchemy |
@@ -130,33 +88,10 @@ realtime-chat-app/
 │   │   └── test_messages.py
 │   ├── requirements.txt
 │   └── .env
-├── frontend/
-│   ├── index.html                 # Landing / auth redirect
-│   ├── login.html                 # Login & forgot password
-│   ├── register.html              # Registration
-│   ├── chat.html                  # Main real-time chat interface
-│   ├── social.html                # Feed, posts, people, communities, activity
-│   ├── profile.html               # Profile page
-│   ├── settings.html              # Settings page
-│   ├── css/
-│   │   ├── global.css
-│   │   ├── auth.css
-│   │   ├── chat.css
-│   │   ├── social.css
-│   │   ├── profile.css
-│   │   └── responsive.css
-│   └── js/
-│       ├── config.js
-│       ├── utils.js
-│       ├── api.js
-│       ├── auth.js
-│       ├── websocket.js
-│       ├── notifications.js
-│       ├── users.js
-│       ├── groups.js
-│       ├── profile.js
-│       ├── social.js
-│       └── chat.js
+├── client/                         # React + TypeScript application
+│   ├── src/                        # Pages, shared UI, typed API, auth store
+│   ├── vite.config.ts              # Dev proxy and production /app/ base
+│   └── package.json
 └── README.md
 ```
 
@@ -191,7 +126,19 @@ CLOUDINARY_API_KEY=
 CLOUDINARY_API_SECRET=
 ```
 
-### 3. Start the Server
+### 3. Install and build the React frontend
+
+```bash
+cd client
+npm install
+npm run build
+```
+
+Vite serves the source during development with `npm run dev` at `http://localhost:5173/app/`. Its `/api`, `/uploads`, and `/ws` requests proxy to FastAPI on port 8000. Run the backend at the same time.
+
+With `APP_ENV=development`, request a login, registration, or password-reset code and use **123456** in the app. The code expires after `OTP_EXPIRE_MINUTES` and can be used once. The app displays it beside the code field in development. Demo codes and code responses are disabled outside development. Passkeys require a browser with WebAuthn support and a `localhost` origin; use `http://localhost:8000` or `http://localhost:5173` when testing them locally.
+
+### 4. Start the Server
 
 Install **FFmpeg and FFprobe** on the server before uploading Reels. Processing runs in a background worker started with the FastAPI app. Reel originals and processed media are stored in a private `reel_media` directory beside `UPLOAD_DIR`; include that directory in backups and provision persistent storage in production.
 The existing startup schema update creates the additive Reel tables and indexes without replacing chat or social tables.
@@ -202,12 +149,16 @@ Reel media currently uses private local storage and signed one-hour playback lin
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-The application will be live at:
-- **Social home**: [http://localhost:8000/social.html](http://localhost:8000/social.html)
-- **Chats**: [http://localhost:8000/chat.html](http://localhost:8000/chat.html)
-- **Reels**: [http://localhost:8000/reels.html](http://localhost:8000/reels.html)
+The built React application will be live at:
+- **Social home**: [http://localhost:8000/app/](http://localhost:8000/app/)
+- **Chats**: [http://localhost:8000/app/chats](http://localhost:8000/app/chats)
+- **Reels**: [http://localhost:8000/app/reels](http://localhost:8000/app/reels)
+- **Communities**: [http://localhost:8000/app/communities](http://localhost:8000/app/communities)
+- **Settings**: [http://localhost:8000/app/settings](http://localhost:8000/app/settings)
 - **Interactive Swagger API Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
 - **ReDoc**: [http://localhost:8000/redoc](http://localhost:8000/redoc)
+
+The React application is the only frontend. The previous `social.html`, `chat.html`, `reels.html`, and auth URLs redirect to their React routes for existing bookmarks. Build the client before starting FastAPI so it can serve `/app/`.
 
 ---
 
@@ -219,6 +170,8 @@ To run the full backend test suite:
 cd backend
 python -m pytest -q
 ```
+
+For frontend type checking and a production bundle, run `npm run build` from `client/`.
 
 If a globally installed pytest plugin conflicts with this project, use
 `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=. python -m pytest -q` from `backend`.

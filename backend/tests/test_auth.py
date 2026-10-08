@@ -1,6 +1,18 @@
 import pytest
+import hashlib
+import json
+import cbor2
+from types import SimpleNamespace
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives import hashes
 from fastapi.testclient import TestClient
+from webauthn.helpers import bytes_to_base64url
 from app.main import app
+from app.config import settings
+from app.models.passkey import Passkey
+from app.models.user import User
+from app.services.auth_service import RESET_CODES, WEBAUTHN_CHALLENGES
+from conftest import TestingSessionLocal
 
 client = TestClient(app)
 
@@ -356,3 +368,173 @@ def test_passkey_options_endpoints():
     )
     assert login_opts.status_code == 200
     assert "challenge" in login_opts.json()
+
+
+def test_passkey_registration_stores_credential(monkeypatch):
+    WEBAUTHN_CHALLENGES.clear()
+    reg = client.post("/api/auth/register", json={
+        "username": "register_key_user", "email": "register_key@example.com",
+        "password": "password123", "confirm_password": "password123"
+    })
+    token = reg.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    options = client.post("/api/auth/passkeys/register/options", headers=headers)
+    assert options.status_code == 200
+    expected_challenge = next(value["challenge"] for key, value in WEBAUTHN_CHALLENGES.items() if key.startswith("reg_"))
+
+    def verify(**kwargs):
+        assert kwargs["expected_challenge"] == expected_challenge
+        return SimpleNamespace(credential_id=b"registered-key", credential_public_key=b"public-key", sign_count=0, aaguid="00000000-0000-0000-0000-000000000000")
+
+    monkeypatch.setattr("app.services.auth_service.webauthn.verify_registration_response", verify)
+    checked = client.post("/api/auth/passkeys/register/verify", headers=headers, json={
+        "name": "Laptop", "response": {"id": "mock-credential"}
+    })
+    assert checked.status_code == 200, checked.text
+    assert checked.json()["passkey"]["credential_id"] == bytes_to_base64url(b"registered-key")
+    listed = client.get("/api/auth/passkeys", headers=headers)
+    assert listed.status_code == 200
+    assert listed.json()[0]["name"] == "Laptop"
+    WEBAUTHN_CHALLENGES.clear()
+
+
+def test_passkey_login_verifies_signed_assertion():
+    WEBAUTHN_CHALLENGES.clear()
+    registered = client.post("/api/auth/register", json={
+        "username": "signed_key_user", "email": "signed_key@example.com",
+        "password": "password123", "confirm_password": "password123"
+    })
+    assert registered.status_code == 201
+    private_key = ec.generate_private_key(ec.SECP256R1())
+    point = private_key.public_key().public_numbers()
+    public_key = cbor2.dumps({1: 2, 3: -7, -1: 1, -2: point.x.to_bytes(32, "big"), -3: point.y.to_bytes(32, "big")})
+    credential_id = bytes_to_base64url(b"signed-credential")
+    with TestingSessionLocal() as db:
+        user = db.query(User).filter(User.username == "signed_key_user").one()
+        db.add(Passkey(user_id=user.id, credential_id=credential_id,
+                       public_key=bytes_to_base64url(public_key), sign_count=0, name="Signed key"))
+        db.commit()
+
+    options = client.post("/api/auth/passkeys/login/options?identifier=signed_key_user").json()
+    assert options["allowCredentials"][0]["id"] == credential_id
+    client_data = json.dumps({"type": "webauthn.get", "challenge": options["challenge"],
+                              "origin": "http://localhost:8000"}, separators=(",", ":")).encode()
+    authenticator_data = hashlib.sha256(b"localhost").digest() + b"\x05" + (1).to_bytes(4, "big")
+    signature = private_key.sign(authenticator_data + hashlib.sha256(client_data).digest(), ec.ECDSA(hashes.SHA256()))
+    assertion = {"id": credential_id, "rawId": credential_id, "type": "public-key", "response": {
+        "authenticatorData": bytes_to_base64url(authenticator_data),
+        "clientDataJSON": bytes_to_base64url(client_data),
+        "signature": bytes_to_base64url(signature), "userHandle": None
+    }}
+    checked = client.post("/api/auth/passkeys/login/verify", json={
+        "challenge_id": options["challenge_id"], "response": assertion
+    })
+    assert checked.status_code == 200, checked.text
+    assert checked.json()["access_token"]
+    with TestingSessionLocal() as db:
+        assert db.query(Passkey).filter(Passkey.credential_id == credential_id).one().sign_count == 1
+    WEBAUTHN_CHALLENGES.clear()
+
+
+def test_passkey_login_uses_its_own_challenge_and_cannot_replay(monkeypatch):
+    WEBAUTHN_CHALLENGES.clear()
+    registered = client.post("/api/auth/register", json={
+        "username": "passkey_login_user", "email": "passkey_login@example.com",
+        "password": "password123", "confirm_password": "password123"
+    })
+    assert registered.status_code == 201
+    with TestingSessionLocal() as db:
+        user = db.query(User).filter(User.username == "passkey_login_user").one()
+        db.add(Passkey(user_id=user.id, credential_id="credential_1", public_key="AQ", sign_count=0, name="Test key"))
+        db.commit()
+
+    first = client.post("/api/auth/passkeys/login/options?identifier=passkey_login_user").json()
+    second = client.post("/api/auth/passkeys/login/options?identifier=passkey_login_user").json()
+    assert first["challenge_id"] != second["challenge_id"]
+    expected_challenge = WEBAUTHN_CHALLENGES[second["challenge_id"]]["challenge"]
+    observed = []
+
+    def verify(**kwargs):
+        observed.append(kwargs["expected_challenge"])
+        return SimpleNamespace(new_sign_count=1)
+
+    monkeypatch.setattr("app.services.auth_service.webauthn.verify_authentication_response", verify)
+    assertion = {"id": "credential_1", "response": {}}
+    result = client.post("/api/auth/passkeys/login/verify", json={
+        "challenge_id": second["challenge_id"], "response": assertion
+    })
+    assert result.status_code == 200, result.text
+    assert result.json()["access_token"]
+    assert observed == [expected_challenge]
+    assert second["challenge_id"] not in WEBAUTHN_CHALLENGES
+    assert first["challenge_id"] in WEBAUTHN_CHALLENGES
+    replay = client.post("/api/auth/passkeys/login/verify", json={
+        "challenge_id": second["challenge_id"], "response": assertion
+    })
+    assert replay.status_code == 400
+    registration_challenge = client.post("/api/auth/passkeys/register/options", headers={
+        "Authorization": f"Bearer {result.json()['access_token']}"
+    })
+    assert registration_challenge.status_code == 200
+    registration_key = next(key for key in WEBAUTHN_CHALLENGES if key.startswith("reg_"))
+    wrong_purpose = client.post("/api/auth/passkeys/login/verify", json={
+        "challenge_id": registration_key, "response": assertion
+    })
+    assert wrong_purpose.status_code == 400
+    WEBAUTHN_CHALLENGES.clear()
+
+
+def test_development_codes_require_a_pending_request():
+    RESET_CODES.clear()
+    reg = client.post("/api/auth/register", json={
+        "username": "demo_user", "email": "demo@example.com",
+        "password": "password123", "confirm_password": "password123"
+    })
+    assert reg.status_code == 201
+    assert reg.json()["demo_otp"] == "123456"
+    no_login_code = client.post("/api/auth/otp/verify", json={
+        "identifier": "demo@example.com", "otp_code": "123456", "purpose": "LOGIN"
+    })
+    assert no_login_code.status_code == 400
+    requested = client.post("/api/auth/otp/send", json={"identifier": "demo@example.com", "purpose": "LOGIN"})
+    assert requested.json()["demo_otp"] == "123456"
+    verified = client.post("/api/auth/otp/verify", json={
+        "identifier": "demo@example.com", "otp_code": "123456", "purpose": "LOGIN"
+    })
+    assert verified.status_code == 200
+    replay = client.post("/api/auth/otp/verify", json={
+        "identifier": "demo@example.com", "otp_code": "123456", "purpose": "LOGIN"
+    })
+    assert replay.status_code == 400
+    no_reset = client.post("/api/auth/reset-password", json={
+        "email": "demo@example.com", "reset_code": "123456",
+        "new_password": "new_password123", "confirm_new_password": "new_password123"
+    })
+    assert no_reset.status_code == 400
+    reset_request = client.post("/api/auth/forgot-password", json={"email": "demo@example.com"})
+    assert reset_request.json()["demo_code"] == "123456"
+    reset = client.post("/api/auth/reset-password", json={
+        "email": "demo@example.com", "reset_code": "123456",
+        "new_password": "new_password123", "confirm_new_password": "new_password123"
+    })
+    assert reset.status_code == 200
+    RESET_CODES.clear()
+
+
+def test_production_does_not_expose_or_accept_demo_codes(monkeypatch):
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    reg = client.post("/api/auth/register", json={
+        "username": "production_user", "email": "production@example.com",
+        "password": "password123", "confirm_password": "password123"
+    })
+    assert reg.status_code == 201
+    assert reg.json().get("demo_otp") is None
+    assert reg.json()["requires_otp"] is True
+    requested = client.post("/api/auth/otp/send", json={"identifier": "production@example.com", "purpose": "LOGIN"})
+    assert requested.json().get("demo_otp") is None
+    wrong_code = client.post("/api/auth/otp/verify", json={
+        "identifier": "production@example.com", "otp_code": "123456", "purpose": "LOGIN"
+    })
+    assert wrong_code.status_code == 400
+    reset_request = client.post("/api/auth/forgot-password", json={"email": "production@example.com"})
+    assert reset_request.json().get("demo_code") is None

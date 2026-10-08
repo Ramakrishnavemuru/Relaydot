@@ -49,6 +49,7 @@ def scheduled_messages(current_user: User = Depends(get_current_user), db: Sessi
     rows = db.query(ScheduledMessage).filter_by(sender_id=current_user.id, status="PENDING")\
         .order_by(ScheduledMessage.send_at).limit(50).all()
     return [{"id": m.id, "conversation_id": m.conversation_id, "content": m.content,
+        "expires_in_seconds": m.expires_in_seconds,
         "send_at": m.send_at.replace(tzinfo=timezone.utc).isoformat() if m.send_at.tzinfo is None else m.send_at.isoformat()} for m in rows]
 
 
@@ -72,11 +73,12 @@ def schedule_message(data: ScheduledMessageCreate, current_user: User = Depends(
         if accessible_message(db, data.thread_root_id, current_user.id).conversation_id != data.conversation_id:
             raise HTTPException(400, "Thread target is not in this conversation")
     item = ScheduledMessage(conversation_id=data.conversation_id, sender_id=current_user.id,
-        content=data.content.strip(), reply_to_id=data.reply_to_id,
+        content=data.content.strip(), expires_in_seconds=data.expires_in_seconds, reply_to_id=data.reply_to_id,
         thread_root_id=data.thread_root_id, send_at=when)
     db.add(item); db.commit(); db.refresh(item)
     return {"id": item.id, "conversation_id": item.conversation_id,
-        "content": item.content, "send_at": item.send_at.replace(tzinfo=timezone.utc).isoformat() if item.send_at.tzinfo is None else item.send_at.isoformat(), "status": item.status}
+        "content": item.content, "expires_in_seconds": item.expires_in_seconds,
+        "send_at": item.send_at.replace(tzinfo=timezone.utc).isoformat() if item.send_at.tzinfo is None else item.send_at.isoformat(), "status": item.status}
 
 
 @router.delete("/scheduled/{scheduled_id}")

@@ -31,7 +31,8 @@ async def process_due_messages():
                 response = await MessageService.send_message(db, item.sender_id,
                     MessageCreate(conversation_id=item.conversation_id, content=item.content,
                         message_type=item.message_type, reply_to_id=item.reply_to_id,
-                        thread_root_id=item.thread_root_id), scheduled_message_id=item.id)
+                        thread_root_id=item.thread_root_id,
+                        expires_in_seconds=item.expires_in_seconds), scheduled_message_id=item.id)
                 item.status = "SENT"
                 db.commit()
                 await manager.send_to_user(item.sender_id, {"event":"message.scheduled.sent",

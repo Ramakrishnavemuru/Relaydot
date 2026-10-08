@@ -22,3 +22,8 @@ uploads/
 .DS_Store
 .idea/
 .vscode/
+
+# React/Vite frontend
+client/node_modules/
+client/dist/
+client/*.tsbuildinfo

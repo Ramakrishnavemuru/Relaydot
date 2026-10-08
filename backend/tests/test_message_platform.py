@@ -68,6 +68,38 @@ def test_threads_forwarding_bookmarks_pins_and_authorization():
         'thread_root_id':other['id']}).status_code == 400
 
 
+def test_unread_badge_matches_readable_messages():
+    client = TestClient(app)
+    alice, ah = account(client, 'unread_alice')
+    _, bh = account(client, 'unread_bob')
+    conversation_id = client.post('/api/conversations/direct', headers=ah,
+        json={'recipient_id':client.get('/api/auth/me', headers=bh).json()['id']}).json()['id']
+
+    def unread_count():
+        rows = client.get('/api/conversations', headers=bh).json()
+        return next(row['unread_count'] for row in rows if row['id'] == conversation_id)
+
+    deleted = client.post('/api/messages', headers=ah,
+        json={'conversation_id':conversation_id, 'content':'Deleted shortly'}).json()
+    expiring = client.post('/api/messages', headers=ah,
+        json={'conversation_id':conversation_id, 'content':'Expired shortly'}).json()
+    assert unread_count() == 2
+    assert client.delete(f"/api/messages/{deleted['id']}", headers=ah).status_code == 200
+    with TestingSessionLocal() as db:
+        db.get(Message, expiring['id']).expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        db.commit()
+    assert unread_count() == 0
+    assert client.post('/api/messages/read', headers=bh,
+        json={'conversation_id':conversation_id}).json()['count'] == 0
+
+    client.post('/api/messages', headers=ah,
+        json={'conversation_id':conversation_id, 'content':'Fresh message'})
+    assert unread_count() == 1
+    assert client.post('/api/messages/read', headers=bh,
+        json={'conversation_id':conversation_id}).json()['count'] == 1
+    assert unread_count() == 0
+
+
 def test_scheduled_delivery_and_disappearing_cleanup(monkeypatch):
     monkeypatch.setattr(scheduled_service, 'SessionLocal', TestingSessionLocal)
     client = TestClient(app)
@@ -77,7 +109,8 @@ def test_scheduled_delivery_and_disappearing_cleanup(monkeypatch):
         json={'recipient_id':bob}).json()['id']
     send_at = (datetime.now(timezone.utc) + timedelta(minutes=2)).isoformat()
     scheduled = client.post('/api/messages/scheduled', headers=ah,
-        json={'conversation_id':conversation,'content':'Later','send_at':send_at})
+        json={'conversation_id':conversation,'content':'Later','send_at':send_at,
+            'expires_in_seconds':10})
     assert scheduled.status_code == 201, scheduled.text
     assert client.get('/api/messages/scheduled', headers=bh).json() == []
     with TestingSessionLocal() as db:
@@ -88,6 +121,7 @@ def test_scheduled_delivery_and_disappearing_cleanup(monkeypatch):
     asyncio.run(scheduled_service.process_due_messages())
     history = client.get(f'/api/messages/conversation/{conversation}', headers=bh).json()
     assert [m['content'] for m in history] == ['Later']
+    assert history[0]['expires_at'] is not None
     assert client.get('/api/messages/scheduled', headers=ah).json() == []
     expiring = client.post('/api/messages', headers=ah, json={'conversation_id':conversation,
         'content':'Temporary', 'expires_in_seconds':10}).json()
@@ -109,9 +143,11 @@ def test_existing_message_table_migrates_without_losing_rows(tmp_path, monkeypat
     with engine.begin() as conn:
         conn.exec_driver_sql("CREATE TABLE messages (id INTEGER PRIMARY KEY, content TEXT)")
         conn.exec_driver_sql("INSERT INTO messages (id, content) VALUES (1, 'kept')")
+        conn.exec_driver_sql("CREATE TABLE scheduled_messages (id INTEGER PRIMARY KEY, content TEXT)")
     monkeypatch.setattr(main, 'engine', engine)
     main.run_schema_migrations()
     with engine.connect() as conn:
         assert conn.exec_driver_sql('SELECT content FROM messages WHERE id=1').scalar() == 'kept'
     columns = {c['name'] for c in inspect(engine).get_columns('messages')}
     assert {'thread_root_id','expires_at','pinned_at','pinned_by_id','is_forwarded','scheduled_message_id'} <= columns
+    assert 'expires_in_seconds' in {column['name'] for column in inspect(engine).get_columns('scheduled_messages')}

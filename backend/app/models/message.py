@@ -63,6 +63,7 @@ class ScheduledMessage(Base):
     conversation_id = Column(Integer, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True)
     sender_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     content = Column(Text, nullable=False)
+    expires_in_seconds = Column(Integer, nullable=True)
     message_type = Column(String(20), nullable=False, default="TEXT")
     reply_to_id = Column(Integer, nullable=True)
     thread_root_id = Column(Integer, nullable=True)

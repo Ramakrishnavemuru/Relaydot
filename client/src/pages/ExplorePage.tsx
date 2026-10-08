@@ -1,0 +1,20 @@
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
+import { ArrowUpRight, Compass, Hash, MessageCircle, PlaySquare, Search, Users } from 'lucide-react'
+import { api, query } from '../api'
+import { Avatar, ErrorBox, Shell } from '../components'
+import { PostCard } from './FeedPage'
+import type { Page, SearchResult } from '../types'
+
+type DiscoveryCommunity = { id: number; name: string; description: string; member_count: number }
+type TrendingTopic = { name: string; posts: number }
+
+export function ExplorePage() {
+  const [input, setInput] = useState('')
+  const term = input.trim()
+  const results = useQuery({ queryKey: ['search', term], queryFn: () => api<SearchResult>(query('/social/search', { q: term, limit: 15 })), enabled: !!term })
+  const trending = useQuery({ queryKey: ['trending'], queryFn: () => api<TrendingTopic[]>('/social/trending'), enabled: !term })
+  const communities = useQuery({ queryKey: ['explore-communities'], queryFn: () => api<Page<DiscoveryCommunity>>(query('/social/communities', { limit: 3 })), enabled: !term })
+  return <Shell active="Explore"><header className="page-header"><h1>Explore</h1></header><label className="explore-search"><Search size={20} /><input autoFocus value={input} onChange={event => setInput(event.target.value)} placeholder="Search people, posts, communities" aria-label="Search Relay" /></label>{!term && <div className="explore-discover"><section className="explore-hero"><span><Compass size={18} /> YOUR DISCOVERY SPACE</span><h2>Find your next favorite thing.</h2><p>Explore conversations, communities, and stories from across Relay.</p></section><div className="explore-shortcuts"><Link to="/reels"><PlaySquare size={23} /><strong>Watch Reels</strong><small>See what people are sharing</small><ArrowUpRight size={18} /></Link><Link to="/communities"><Users size={23} /><strong>Communities</strong><small>Find people who get you</small><ArrowUpRight size={18} /></Link><Link to="/chats"><MessageCircle size={23} /><strong>Messages</strong><small>Pick up a conversation</small><ArrowUpRight size={18} /></Link></div>{!!trending.data?.length && <section className="discover-section"><h2><Hash size={19} /> Trending topics</h2><div className="discover-topics">{trending.data.map(topic => <Link key={topic.name} to={`/topics/${encodeURIComponent(topic.name)}`}><strong>#{topic.name}</strong><small>{topic.posts} posts</small></Link>)}</div></section>}{!!communities.data?.items.length && <section className="discover-section"><h2><Users size={19} /> Communities to explore</h2><div className="discover-communities">{communities.data.items.map(community => <Link key={community.id} to={`/communities/${community.id}`}><strong>{community.name}</strong><small>{community.description || `${community.member_count} members`}</small><ArrowUpRight size={18} /></Link>)}</div></section>}</div>}{results.isPending && term && <div className="loading-list">Searching…</div>}{results.error && <ErrorBox error={results.error} />}{results.data && <><section className="result-section"><h2>People</h2>{results.data.people.length ? results.data.people.map(person => <Link className="person-row" key={person.id} to={`/profile/${person.id}`}><Avatar user={person} /><span><strong>{person.display_name || person.username}</strong><small>@{person.username}</small></span></Link>) : <p className="muted">No people found.</p>}</section><section className="result-section"><h2>Topics</h2><div className="topic-list">{results.data.topics.map(topic => <Link key={topic.name} to={`/topics/${encodeURIComponent(topic.name)}`}>#{topic.name}</Link>)}</div></section><section className="result-section"><h2>Posts</h2>{results.data.posts.map(post => <PostCard key={post.id} post={post} />)}</section><section className="result-section"><h2>Communities</h2>{results.data.communities.map(community => <Link className="community-result" key={community.id} to={`/communities/${community.id}`}><strong>{community.name}</strong><p>{community.description}</p><small>{community.member_count} members</small></Link>)}</section></>}</Shell>
+}
