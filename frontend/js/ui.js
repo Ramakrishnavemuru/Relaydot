@@ -4,7 +4,7 @@
   const desktop = window.matchMedia('(min-width: 1200px)');
   const read = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } };
   const write = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); return true; } catch { return false; } };
-  const getTheme = () => { try { return localStorage.getItem('relay-theme') || 'system'; } catch { return 'system'; } };
+  const getTheme = () => { try { return localStorage.getItem('relay-theme') || 'dark'; } catch { return 'dark'; } };
   const applyTheme = () => {
     const theme = getTheme();
     document.documentElement.dataset.theme = theme === 'system' ? (system.matches ? 'dark' : 'light') : theme;

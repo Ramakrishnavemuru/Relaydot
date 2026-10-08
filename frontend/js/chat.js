@@ -318,7 +318,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       document.getElementById('btn-list-search-all')?.addEventListener('click', () => setupSearchMessagesModal(null, q));
       return;
     }
-    elements.conversationsList.querySelector('.list-empty, [aria-label="Loading conversations"]')?.remove();
+    elements.conversationsList.querySelector('.list-empty')?.remove();
+    elements.conversationsList.querySelectorAll('.skeleton-row').forEach(row => row.remove());
     existing.forEach((item,id) => { if (!filtered.some(conv => conv.id === id)) item.remove(); });
     filtered.forEach((conv,index) => {
       const p = pref(conv.id); const name = chatName(conv); const isGroup = conv.type === 'GROUP';

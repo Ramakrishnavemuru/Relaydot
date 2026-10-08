@@ -220,8 +220,8 @@
     } catch (e) { target.innerHTML = message('Search unavailable', e.message, 'error'); }
   };
   const route = () => ({home:renderHome,post:renderPost,profile:renderProfile,communities:renderCommunities,community:renderCommunity,notifications:renderNotifications,bookmarks:renderBookmarks,search:renderSearch,hashtag:renderHashtag}[state.view] || renderHome)();
-  const dialog = (title, html) => { state.previousFocus = document.activeElement; $('#dialog-title').textContent = title; $('#dialog-body').innerHTML = html; $('#social-dialog').classList.remove('hidden'); $('.social-shell').inert = true; $('.social-mobile-nav').inert = true; AppUI.decorate($('#social-dialog')); $('#social-dialog').querySelector('textarea,input,button')?.focus(); };
-  const closeDialog = () => { $('#social-dialog').classList.add('hidden'); $('#dialog-body').innerHTML = ''; $('.social-shell').inert = false; $('.social-mobile-nav').inert = false; state.previousFocus?.focus?.(); };
+  const dialog = (title, html) => { state.previousFocus = document.activeElement; $('#dialog-title').textContent = title; $('#dialog-body').innerHTML = html; $('#social-dialog').classList.remove('hidden'); $('.social-shell').inert = true; $('.social-mobile-nav').inert = true; $('#mobile-compose').inert = true; AppUI.decorate($('#social-dialog')); $('#social-dialog').querySelector('textarea,input,button')?.focus(); };
+  const closeDialog = () => { $('#social-dialog').classList.add('hidden'); $('#dialog-body').innerHTML = ''; $('.social-shell').inert = false; $('.social-mobile-nav').inert = false; $('#mobile-compose').inert = false; state.previousFocus?.focus?.(); };
   const composer = (preset = {}) => {
     const quote = preset.quote || null;
     const editing = preset.edit || null;

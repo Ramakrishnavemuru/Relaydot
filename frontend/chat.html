@@ -6,13 +6,14 @@
   <meta name="theme-color" content="#5b55d6">
   <title>Relay — Messages</title>
   <script src="js/icons.js?v=20261003-final"></script>
-  <script src="js/ui.js?v=20261004-platform"></script>
+  <script src="js/ui.js?v=20261008"></script>
   <link rel="stylesheet" href="css/global.css?v=20261003-final">
   <link rel="stylesheet" href="css/chat.css?v=20261003-final">
   <link rel="stylesheet" href="css/profile.css?v=20261003-final">
   <link rel="stylesheet" href="css/calls.css?v=20261003-final">
   <link rel="stylesheet" href="css/stories.css?v=20261003-final">
   <link rel="stylesheet" href="css/responsive.css?v=20261003-final">
+  <link rel="stylesheet" href="css/reference-ui.css?v=20261008-mobile">
 </head>
 <body class="messaging-page">
   <a class="skip-link" href="#message-input">Skip to message composer</a>
@@ -41,18 +42,18 @@
       </div>
     </nav>
     <aside class="chat-sidebar" aria-label="Conversations">
-      <div class="sidebar-brand"><span>relay<span class="brand-period">.</span></span><span class="workspace-label">YOUR SPACE TO CONNECT</span><div class="mobile-chat-tools"><button id="btn-mobile-stories" class="icon-btn" title="Stories" aria-label="Stories"><span data-icon="circle"></span></button><button id="btn-mobile-group" class="icon-btn" title="Create group" aria-label="Create group"><span data-icon="users"></span></button></div></div>
+      <div class="sidebar-brand"><span>relay<span class="brand-period">.</span></span><span class="workspace-label">MESSAGES</span><div class="mobile-chat-tools"><button id="btn-mobile-stories" class="icon-btn" title="Stories" aria-label="Stories"><span data-icon="circle"></span></button><button id="btn-mobile-group" class="icon-btn" title="Create group" aria-label="Create group"><span data-icon="users"></span></button></div></div>
       <div class="sidebar-header">
-        <div class="sidebar-heading"><h1>Inbox <span id="conversation-count" class="count-label">0</span></h1><p>Good conversations start here.</p></div>
+        <div class="sidebar-heading"><h1>Chats <span id="conversation-count" class="count-label">0</span></h1><p>All your conversations</p></div>
         <button id="btn-global-search" class="icon-btn" title="Search people and messages"><span data-icon="search"></span></button><button id="btn-new-chat" class="icon-btn compose-button" title="New conversation"><span data-icon="compose"></span></button>
       </div>
       <div class="sidebar-search"><div class="search-input-wrap"><span class="search-icon" data-icon="search"></span><input type="search" id="conv-search-input" class="form-input" placeholder="Search conversations" aria-label="Search conversations" /><kbd>⌘ K</kbd><button id="btn-clear-conversation-search" class="icon-btn clear-search hidden" aria-label="Clear conversation search"><span data-icon="x"></span></button></div></div>
       <nav class="chat-filters" aria-label="Filter conversations">
-        <button class="chat-filter active" data-filter="all" aria-pressed="true">All chats</button>
+        <button class="chat-filter active" data-filter="all" aria-pressed="true">All</button>
         <button class="chat-filter" data-filter="unread" aria-pressed="false">Unread <span id="unread-count"></span></button>
+        <button class="chat-filter" data-filter="favorites" aria-pressed="false">Favorites</button>
         <button class="chat-filter" data-filter="groups" aria-pressed="false">Groups</button>
-        <button class="chat-filter icon-filter" data-filter="favorites" aria-pressed="false" aria-label="Favorites" title="Favorites"><span data-icon="star"></span></button>
-        <button class="chat-filter icon-filter" data-filter="archived" aria-pressed="false" aria-label="Archived" title="Archived"><span data-icon="archive"></span></button>
+        <button class="chat-filter archive-filter" data-filter="archived" aria-pressed="false"><span data-icon="archive"></span>Archived</button>
       </nav>
       <!-- 24-Hour Stories Carousel Tray -->
       <div id="stories-tray-container" class="stories-tray-container hidden">
@@ -707,6 +708,6 @@
   <script src="js/users.js?v=20261003-final"></script>
   <script src="js/groups.js?v=20261003-final"></script>
   <script src="js/profile.js?v=20261003-final"></script>
-  <script src="js/chat.js?v=20261004-platform3"></script>
+  <script src="js/chat.js?v=20261008"></script>
 </body>
 </html>

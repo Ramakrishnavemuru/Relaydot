@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#11121a"><title>Reels · Relay</title>
-  <script src="js/icons.js"></script><script src="js/ui.js"></script>
-  <link rel="stylesheet" href="css/global.css"><link rel="stylesheet" href="css/reels.css">
+  <script src="js/icons.js"></script><script src="js/ui.js?v=20261008"></script>
+  <link rel="stylesheet" href="css/global.css"><link rel="stylesheet" href="css/reels.css"><link rel="stylesheet" href="css/reference-ui.css?v=20261008-mobile">
 </head>
 <body class="reels-page">
   <a class="skip-link" href="#reel-stage">Skip to Reel</a>
@@ -48,7 +48,7 @@
     <aside id="reel-comments" class="reels-comments hidden" aria-label="Reel comments"><div class="comments-header"><h2>Comments</h2><button id="close-comments" aria-label="Close comments">×</button></div><div id="reel-comment-list" class="reel-comment-list"></div><form id="reel-comment-form"><input id="reel-comment-input" maxlength="2000" placeholder="Add a comment…" aria-label="Add a comment" required><button type="submit">Post</button></form></aside>
   </div>
   <div id="reel-dialog" class="reel-dialog-overlay hidden" role="presentation"><div class="reel-dialog" role="dialog" aria-modal="true" aria-labelledby="reel-dialog-title"><header><h2 id="reel-dialog-title">Create Reel</h2><button id="close-reel-dialog" aria-label="Close dialog">×</button></header><div id="reel-dialog-body"></div></div></div>
-  <nav class="reels-mobile-nav" aria-label="Mobile navigation"><a href="social.html">Home</a><a href="chat.html">Chats</a><a href="reels.html" aria-current="page">Reels</a><a href="social.html?view=profile">Profile</a></nav>
+  <nav class="reels-mobile-nav" aria-label="Mobile navigation"><a href="social.html"><span data-icon="circle"></span>Home</a><a href="reels.html" aria-current="page"><span data-icon="video"></span>Reels</a><a href="chat.html"><span data-icon="message"></span>Chats</a><a href="social.html?view=search"><span data-icon="search"></span>Explore</a><a href="social.html?view=profile"><span data-icon="user"></span>Profile</a></nav>
   <script src="js/config.js"></script><script src="js/utils.js"></script><script src="js/api.js"></script><script src="js/auth.js"></script><script src="js/websocket.js"></script><script src="js/reels.js"></script>
 </body>
 </html>
