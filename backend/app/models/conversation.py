@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean, Index
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -24,6 +24,8 @@ class Conversation(Base):
 
 class ConversationMember(Base):
     __tablename__ = "conversation_members"
+    __table_args__ = (Index("ix_conversation_members_user_conversation", "user_id", "conversation_id"),
+                      Index("ix_conversation_members_conversation_user", "conversation_id", "user_id"))
 
     id = Column(Integer, primary_key=True, index=True)
     conversation_id = Column(Integer, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -32,6 +34,15 @@ class ConversationMember(Base):
     joined_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     last_read_message_id = Column(Integer, nullable=True)
     is_muted = Column(Boolean, default=False)
+    muted_until = Column(DateTime, nullable=True)
+    mute_calls = Column(Boolean, default=False, nullable=False)
+    is_pinned = Column(Boolean, default=False, nullable=False)
+    is_archived = Column(Boolean, default=False, nullable=False)
+    is_favourite = Column(Boolean, default=False, nullable=False)
+    is_hidden = Column(Boolean, default=False, nullable=False)
+    cleared_before_message_id = Column(Integer, default=0, nullable=False)
+    lock_pin_hash = Column(String(200), nullable=True)
+    lock_version = Column(String(40), nullable=True)
 
     # Relationships
     conversation = relationship("Conversation", back_populates="members")

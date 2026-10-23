@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 from fastapi import HTTPException, status
+from fastapi import Request
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, func, desc, select
 
@@ -9,6 +10,8 @@ from app.models.message import Message, MessageRead
 from app.models.user import User
 from app.schemas.conversation import GroupCreate, GroupUpdate
 from app.services.user_service import UserService
+from app.services.settings_service import require_policy
+from app.services.chat_lock import is_chat_unlocked
 from app.utils.helpers import sanitize_text, get_default_avatar
 
 
@@ -27,6 +30,7 @@ class ConversationService:
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Cannot start a conversation with a blocked user."
             )
+        require_policy(db, user2_id, user1_id, "dm_policy", "direct messages")
 
         # Find existing DIRECT conversation that contains both user1 and user2
         conv_ids_user1 = (
@@ -98,6 +102,7 @@ class ConversationService:
             # Check user exists and is not blocked
             user = db.query(User).filter(User.id == mid).first()
             if user and not UserService.is_blocked(db, creator_id, mid):
+                require_policy(db, mid, creator_id, "group_invite_policy", "group invitations")
                 m = ConversationMember(
                     conversation_id=conv.id,
                     user_id=mid,
@@ -111,6 +116,9 @@ class ConversationService:
 
     @staticmethod
     def update_group(db: Session, conversation_id: int, user_id: int, update_data: GroupUpdate) -> Conversation:
+        from app.models.social import Community
+        if db.query(Community.id).filter_by(conversation_id=conversation_id).first():
+            raise HTTPException(403, "Manage community details through the community page")
         conv = ConversationService.get_conversation_or_404(db, conversation_id, user_id)
         if conv.type != "GROUP":
             raise HTTPException(
@@ -144,6 +152,9 @@ class ConversationService:
 
     @staticmethod
     def add_member(db: Session, conversation_id: int, admin_user_id: int, target_user_id: int, role: str = "MEMBER") -> ConversationMember:
+        from app.models.social import Community
+        if db.query(Community.id).filter_by(conversation_id=conversation_id).first():
+            raise HTTPException(403, "Join and manage members through the community page")
         conv = ConversationService.get_conversation_or_404(db, conversation_id, admin_user_id)
         if conv.type != "GROUP":
             raise HTTPException(
@@ -169,6 +180,7 @@ class ConversationService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found."
             )
+        require_policy(db, target_user_id, admin_user_id, "group_invite_policy", "group invitations")
 
         # Check if already a member
         existing = db.query(ConversationMember).filter(
@@ -195,6 +207,9 @@ class ConversationService:
 
     @staticmethod
     def remove_member(db: Session, conversation_id: int, requester_id: int, target_user_id: int) -> None:
+        from app.models.social import Community
+        if db.query(Community.id).filter_by(conversation_id=conversation_id).first():
+            raise HTTPException(403, "Leave and manage members through the community page")
         conv = ConversationService.get_conversation_or_404(db, conversation_id, requester_id)
         if conv.type != "GROUP":
             raise HTTPException(
@@ -254,26 +269,47 @@ class ConversationService:
         return conv
 
     @staticmethod
-    def list_user_conversations(db: Session, user_id: int) -> List[Dict[str, Any]]:
-        # Get all conversation memberships for user
-        memberships = (
-            db.query(ConversationMember)
-            .filter(ConversationMember.user_id == user_id)
-            .all()
-        )
-        conv_ids = [m.conversation_id for m in memberships]
-        if not conv_ids:
+    def list_user_conversations(db: Session, user_id: int, request: Request | None = None) -> List[Dict[str, Any]]:
+        convs = db.query(Conversation).join(ConversationMember,
+            ConversationMember.conversation_id == Conversation.id).filter(
+            ConversationMember.user_id == user_id).order_by(desc(Conversation.updated_at)).all()
+        if not convs:
             return []
+        conv_ids = [conv.id for conv in convs]
+        members_by_conversation = {conv_id: [] for conv_id in conv_ids}
+        own_members = {}
+        for member, user in db.query(ConversationMember, User).join(
+            User, User.id == ConversationMember.user_id).filter(
+            ConversationMember.conversation_id.in_(conv_ids)).all():
+            members_by_conversation[member.conversation_id].append((member, user))
+            if member.user_id == user_id:
+                own_members[member.conversation_id] = member
 
-        convs = (
-            db.query(Conversation)
-            .filter(Conversation.id.in_(conv_ids))
-            .order_by(desc(Conversation.updated_at))
-            .all()
-        )
+        latest_id = select(Message.id).where(Message.conversation_id == Conversation.id).order_by(
+            desc(Message.created_at), desc(Message.id)).limit(1).correlate(Conversation).scalar_subquery()
+        last_by_conversation = {conv_id: (message, sender) for conv_id, message, sender in
+            db.query(Conversation.id, Message, User).outerjoin(Message, Message.id == latest_id).outerjoin(
+                User, User.id == Message.sender_id).filter(Conversation.id.in_(conv_ids)).all()}
+
+        read_exists = select(MessageRead.id).where(MessageRead.message_id == Message.id,
+            MessageRead.user_id == user_id).exists()
+        unread_by_conversation = dict(db.query(Message.conversation_id, func.count(Message.id)).join(
+            ConversationMember, ConversationMember.conversation_id == Message.conversation_id).filter(
+            ConversationMember.user_id == user_id,
+            Message.conversation_id.in_(conv_ids), Message.sender_id != user_id,
+            Message.id > ConversationMember.cleared_before_message_id,
+            Message.deleted_at.is_(None),
+            or_(Message.expires_at.is_(None), Message.expires_at > datetime.now(timezone.utc)),
+            ~read_exists).group_by(Message.conversation_id).all())
 
         result = []
         for c in convs:
+            own = own_members[c.id]
+            last_msg = last_by_conversation.get(c.id)
+            last_id = last_msg[0].id if last_msg and last_msg[0] is not None else 0
+            if own.is_hidden and last_id <= (own.cleared_before_message_id or 0):
+                continue
+            unlocked = is_chat_unlocked(request, own)
             c_dict = {
                 "id": c.id,
                 "type": c.type,
@@ -284,20 +320,25 @@ class ConversationService:
                 "created_at": c.created_at.isoformat() if c.created_at else None,
                 "updated_at": c.updated_at.isoformat() if c.updated_at else None,
                 "members": [],
-                "unread_count": 0,
+                "unread_count": unread_by_conversation.get(c.id, 0) if unlocked else 0,
                 "last_message": None,
-                "other_user": None
+                "other_user": None,
+                "is_pinned": bool(own.is_pinned),
+                "is_archived": bool(own.is_archived),
+                "is_favourite": bool(own.is_favourite),
+                "is_muted": bool(own.is_muted or (own.muted_until and
+                    own.muted_until.replace(tzinfo=timezone.utc) > datetime.now(timezone.utc))),
+                "mute_calls": bool(own.mute_calls),
+                "is_locked": bool(own.lock_pin_hash),
+                "is_unlocked": unlocked,
             }
 
-            # Fetch members
-            all_members = (
-                db.query(ConversationMember, User)
-                .join(User, User.id == ConversationMember.user_id)
-                .filter(ConversationMember.conversation_id == c.id)
-                .all()
-            )
+            if not unlocked:
+                c_dict.update(name=None, avatar_url=None, description=None, members=[])
+                result.append(c_dict)
+                continue
 
-            for cm, u in all_members:
+            for cm, u in members_by_conversation[c.id]:
                 user_dict = u.to_dict(include_sensitive=False)
                 c_dict["members"].append({
                     "id": cm.id,
@@ -313,16 +354,7 @@ class ConversationService:
                     c_dict["name"] = user_dict.get("display_name") or user_dict.get("username")
                     c_dict["avatar_url"] = user_dict.get("avatar_url")
 
-            # Last message
-            last_msg = (
-                db.query(Message, User)
-                .join(User, User.id == Message.sender_id)
-                .filter(Message.conversation_id == c.id)
-                .order_by(desc(Message.created_at))
-                .first()
-            )
-
-            if last_msg:
+            if last_msg and last_msg[0] is not None and last_id > (own.cleared_before_message_id or 0):
                 m, sender = last_msg
                 c_dict["last_message"] = {
                     "id": m.id,
@@ -334,20 +366,7 @@ class ConversationService:
                     "is_deleted": bool(m.deleted_at)
                 }
 
-            # Unread count
-            # Unread messages are messages in c.id not sent by user_id and without a MessageRead record for user_id
-            read_subquery = select(MessageRead.message_id).filter(MessageRead.user_id == user_id)
-            unread_count = (
-                db.query(func.count(Message.id))
-                .filter(
-                    Message.conversation_id == c.id,
-                    Message.sender_id != user_id,
-                    ~Message.id.in_(read_subquery)
-                )
-                .scalar() or 0
-            )
-            c_dict["unread_count"] = unread_count
-
             result.append(c_dict)
 
+        result.sort(key=lambda row: not row["is_pinned"])
         return result

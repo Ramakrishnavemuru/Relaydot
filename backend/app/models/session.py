@@ -21,6 +21,7 @@ class UserSession(Base):
     expires_at = Column(DateTime, nullable=False)
     revoked = Column(Boolean, default=False, nullable=False)
     revoked_at = Column(DateTime, nullable=True)
+    staff_verified_until = Column(DateTime, nullable=True)
 
     # Relationship
     user = relationship("User", back_populates="sessions")

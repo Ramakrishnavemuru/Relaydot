@@ -48,11 +48,11 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: list[str] = [
         "http://localhost:3000",
         "http://localhost:8000",
+        "http://localhost:5173",
         "http://127.0.0.1:3000",
         "http://127.0.0.1:8000",
         "http://localhost:5500",
-        "http://127.0.0.1:5500",
-        "*"
+        "http://127.0.0.1:5500"
     ]
 
     model_config = SettingsConfigDict(
@@ -63,6 +63,31 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+if settings.APP_ENV.lower() == "production" or os.environ.get("RENDER") or os.environ.get("RENDER_EXTERNAL_HOSTNAME"):
+    if settings.SECRET_KEY == "super-secret-jwt-key-for-realtime-chat-app-2026" or len(settings.SECRET_KEY) < 48:
+        raise RuntimeError("Production requires a unique SECRET_KEY of at least 48 characters")
+    if settings.DEBUG:
+        raise RuntimeError("DEBUG must be disabled in production")
+
+# Auto-detect Render environment for WebAuthn, CORS, and Cookies
+render_host = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
+render_url = os.environ.get("RENDER_EXTERNAL_URL")
+
+if render_host and settings.RP_ID == "localhost":
+    settings.RP_ID = render_host
+
+if render_url and settings.RP_ORIGIN == "http://localhost:8000":
+    settings.RP_ORIGIN = render_url
+    if render_url not in settings.ALLOWED_ORIGINS:
+        settings.ALLOWED_ORIGINS.append(render_url)
+
+if (os.environ.get("RENDER") or settings.APP_ENV == "production") and "COOKIE_SECURE" not in os.environ:
+    settings.COOKIE_SECURE = True
+
+if settings.APP_ENV.lower() == "production" or os.environ.get("RENDER") or render_host:
+    if not settings.COOKIE_SECURE or settings.COOKIE_SAMESITE.lower() not in {"lax", "strict"}:
+        raise RuntimeError("Production requires Secure cookies with SameSite=Lax or Strict")
 
 # Ensure local upload directory exists
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)

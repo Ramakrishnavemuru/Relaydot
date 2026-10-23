@@ -8,6 +8,8 @@ env/
 venv/
 *.sqlite3
 *.db
+*.db-shm
+*.db-wal
 
 # Environment variables
 .env
@@ -15,9 +17,15 @@ backend/.env
 
 # Uploads
 backend/uploads/
+backend/reel_media/
 uploads/
 
 # IDE & OS
 .DS_Store
 .idea/
 .vscode/
+
+# React/Vite frontend
+client/node_modules/
+client/dist/
+client/*.tsbuildinfo

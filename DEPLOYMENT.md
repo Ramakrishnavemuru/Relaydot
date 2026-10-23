@@ -1,6 +1,6 @@
 # 🚀 Deployment Guide: Real-Time Chat App
 
-This application is packaged as a **single, unified full-stack service**: FastAPI serves both the REST API, the WebSocket server (`/ws`), the file storage/uploads (`/uploads`), and the frontend static assets (`/`).
+This application is packaged as a **single, unified full-stack service**: FastAPI serves the REST API, the WebSocket server (`/ws`), file uploads (`/uploads`), and the built React frontend (`/app/`). The root URL redirects to `/app/`.
 
 ---
 

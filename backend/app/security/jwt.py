@@ -41,6 +41,7 @@ def create_2fa_ticket(user_id: int) -> str:
     payload = {
         "sub": str(user_id),
         "type": "2fa_ticket",
+        "jti": secrets.token_urlsafe(24),
         "exp": expire,
         "iat": now,
         "nbf": now

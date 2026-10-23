@@ -4,6 +4,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from app.database import Base, get_db
 from app.main import app
+from app.services.rate_limit import _hits
 
 TEST_DATABASE_URL = "sqlite:///:memory:"
 
@@ -17,6 +18,7 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_
 
 @pytest.fixture(autouse=True)
 def setup_and_teardown_db():
+    _hits.clear()
     Base.metadata.create_all(bind=test_engine)
 
     def override_get_db():

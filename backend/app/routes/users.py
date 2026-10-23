@@ -11,6 +11,7 @@ from app.schemas.user import (
 )
 from app.services.user_service import UserService
 from app.security.dependencies import get_current_user
+from app.websocket.manager import manager
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -33,13 +34,18 @@ def update_my_profile(
 
 
 @router.put("/privacy", response_model=UserResponse)
-def update_my_privacy(
+async def update_my_privacy(
     privacy_data: PrivacySettingsUpdate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Update privacy settings (show_last_seen, show_online, show_read_receipts)."""
+    old_online_visibility = current_user.show_online
     updated = UserService.update_privacy(db, current_user, privacy_data)
+    if privacy_data.show_online is not None and old_online_visibility != updated.show_online:
+        await manager.broadcast_user_status(updated.id,
+            is_online=bool(updated.show_online and manager.is_user_online(updated.id)),
+            db=db, last_seen=None)
     return updated.to_dict(include_sensitive=True)
 
 

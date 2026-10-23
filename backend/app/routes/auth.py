@@ -1,9 +1,13 @@
 from typing import List, Dict, Any, Optional
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, status, Request, Response
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.user import User
+from app.models.auth_attempt import AuthAttempt
+from app.security.jwt import hash_token
+from fastapi import HTTPException
 from app.schemas.auth import (
     RegisterRequest,
     LoginRequest,
@@ -21,10 +25,25 @@ from app.schemas.auth import (
     ResetPasswordRequest
 )
 from app.schemas.user import UserResponse
-from app.services.auth_service import AuthService
+from app.services.auth_service import AuthService, demo_codes_enabled
 from app.security.dependencies import get_current_user
+from app.websocket.manager import manager
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+
+
+def guard_auth(db: Session, request: Request, action: str, subject: str, limit: int, minutes: int = 15):
+    """Database-backed protective throttling, keyed by peer and normalized identifier."""
+    ip_hash = hash_token(request.client.host if request.client else "unknown")
+    subject_hash = hash_token(subject.strip().lower())
+    since = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+    count = db.query(AuthAttempt).filter(AuthAttempt.action == action,
+        AuthAttempt.ip_hash == ip_hash, AuthAttempt.subject_hash == subject_hash,
+        AuthAttempt.created_at >= since).count()
+    if count >= limit:
+        raise HTTPException(429, "Too many attempts. Please try again later.")
+    db.add(AuthAttempt(ip_hash=ip_hash, subject_hash=subject_hash, action=action))
+    db.commit()
 
 
 # -------------------------------------------------------------
@@ -49,12 +68,14 @@ def login(
     db: Session = Depends(get_db)
 ):
     """Authenticate with username, email, or phone and password. Triggers 2FA challenge if enabled."""
+    guard_auth(db, request, "PASSWORD_LOGIN", req.username_or_email or req.identifier or "", 10)
     return AuthService.authenticate_user(db, req, request, response)
 
 
 @router.post("/otp/send")
-def send_otp(req: SendOTPRequest, db: Session = Depends(get_db)):
+def send_otp(req: SendOTPRequest, request: Request, db: Session = Depends(get_db)):
     """Request an OTP verification code sent to email or phone."""
+    guard_auth(db, request, "OTP_SEND", req.identifier, 5, 60)
     return AuthService.send_otp(db, req)
 
 
@@ -66,6 +87,7 @@ def verify_otp(
     db: Session = Depends(get_db)
 ):
     """Verify OTP code. Activates unverified accounts or completes passwordless login."""
+    guard_auth(db, request, "OTP_VERIFY", req.identifier, 20)
     return AuthService.verify_otp(db, req, request, response)
 
 
@@ -80,6 +102,7 @@ def verify_2fa(
     db: Session = Depends(get_db)
 ):
     """Verify 2FA challenge using an authenticator app code or backup recovery code."""
+    guard_auth(db, request, "TWO_FACTOR", hash_token(req.ticket), 10)
     return AuthService.verify_2fa(db, req, request, response)
 
 
@@ -102,7 +125,7 @@ def refresh_token(
 # Logout & Profile
 # -------------------------------------------------------------
 @router.post("/logout")
-def logout(
+async def logout(
     request: Request,
     response: Response,
     current_user: User = Depends(get_current_user),
@@ -112,6 +135,7 @@ def logout(
     session_id = getattr(request.state, "session_id", None)
     if session_id:
         AuthService.revoke_session(db, current_user.id, session_id, session_id, response)
+        await manager.close_session(session_id)
     else:
         AuthService.clear_auth_cookies(response)
     return {"message": "Logged out successfully"}
@@ -138,7 +162,7 @@ def list_active_sessions(
 
 
 @router.delete("/sessions/{session_id}")
-def revoke_device_session(
+async def revoke_device_session(
     session_id: str,
     request: Request,
     response: Response,
@@ -148,11 +172,12 @@ def revoke_device_session(
     """Revoke a specific device session (logout device)."""
     current_sid = getattr(request.state, "session_id", None)
     AuthService.revoke_session(db, current_user.id, session_id, current_sid, response)
+    await manager.close_session(session_id)
     return {"message": "Session terminated successfully"}
 
 
 @router.post("/sessions/revoke-others")
-def revoke_other_sessions(
+async def revoke_other_sessions(
     request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -160,6 +185,7 @@ def revoke_other_sessions(
     """Revoke all sessions except the current active device."""
     current_sid = getattr(request.state, "session_id", None)
     count = AuthService.revoke_other_sessions(db, current_user.id, current_sid)
+    await manager.close_other_sessions(current_user.id, current_sid)
     return {"message": f"Terminated {count} other active session(s)"}
 
 
@@ -222,10 +248,12 @@ def passkey_register_verify(
 
 @router.post("/passkeys/login/options")
 def passkey_login_options(
+    request: Request,
     identifier: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """Get WebAuthn authentication options for passkey login."""
+    guard_auth(db, request, "PASSKEY_OPTIONS", identifier or "anonymous", 20)
     return AuthService.get_passkey_login_options(db, identifier)
 
 
@@ -237,7 +265,8 @@ def passkey_login_verify(
     db: Session = Depends(get_db)
 ):
     """Verify passkey assertion and log in passwordlessly."""
-    return AuthService.verify_passkey_login(db, req.response, request, response)
+    guard_auth(db, request, "PASSKEY_VERIFY", req.challenge_id, 10)
+    return AuthService.verify_passkey_login(db, req.response, req.challenge_id, request, response)
 
 
 @router.get("/passkeys")
@@ -264,28 +293,35 @@ def delete_passkey(
 # Password Management
 # -------------------------------------------------------------
 @router.post("/change-password")
-def change_password(
+async def change_password(
     req: ChangePasswordRequest,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Change current user's password."""
     AuthService.change_password(db, current_user, req)
+    current_sid = getattr(request.state, "session_id", None)
+    AuthService.revoke_other_sessions(db, current_user.id, current_sid)
+    await manager.close_other_sessions(current_user.id, current_sid)
     return {"message": "Password changed successfully"}
 
 
 @router.post("/forgot-password")
-def forgot_password(req: ForgotPasswordRequest, db: Session = Depends(get_db)):
+def forgot_password(req: ForgotPasswordRequest, request: Request, db: Session = Depends(get_db)):
     """Request a password reset code sent to the email."""
+    guard_auth(db, request, "PASSWORD_RESET_SEND", req.email, 5, 60)
     code = AuthService.create_reset_code(db, req.email)
     return {
         "message": "Password reset code sent (if email exists).",
-        "demo_code": code
+        "demo_code": code if demo_codes_enabled() else None
     }
 
 
 @router.post("/reset-password")
-def reset_password(req: ResetPasswordRequest, db: Session = Depends(get_db)):
+async def reset_password(req: ResetPasswordRequest, request: Request, db: Session = Depends(get_db)):
     """Reset password using the received reset code."""
-    AuthService.reset_password(db, req)
+    guard_auth(db, request, "PASSWORD_RESET_VERIFY", req.email, 10)
+    user_id = AuthService.reset_password(db, req)
+    await manager.close_other_sessions(user_id, None)
     return {"message": "Password has been reset successfully. Please log in."}

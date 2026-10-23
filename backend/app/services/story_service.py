@@ -8,11 +8,13 @@ from app.models.story import Story
 from app.models.story_view import StoryView
 from app.models.user import User
 from app.models.block import BlockedUser
+from app.models.social import Follow
 from app.schemas.story import StoryCreate
 from app.services.conversation_service import ConversationService
 from app.services.message_service import MessageService
 from app.schemas.message import MessageCreate
 from app.utils.helpers import sanitize_text
+from app.services.settings_service import policy_allows
 
 
 class StoryService:
@@ -26,6 +28,7 @@ class StoryService:
             media_url=data.media_url,
             media_type=data.media_type or "IMAGE",
             caption=sanitize_text(data.caption) if data.caption else None,
+            visibility=data.visibility,
             created_at=now,
             expires_at=expires_at
         )
@@ -53,12 +56,18 @@ class StoryService:
             if b.blocked_id == current_user_id:
                 excluded_ids.add(b.blocker_id)
 
+        following = {r[0] for r in db.query(Follow.following_id).filter_by(follower_id=current_user_id)}
+        followers = {r[0] for r in db.query(Follow.follower_id).filter_by(following_id=current_user_id)}
         query = (
             db.query(Story, User)
             .join(User, User.id == Story.user_id)
             .filter(
                 Story.expires_at > now,
-                ~Story.user_id.in_(excluded_ids) if excluded_ids else True
+                or_(Story.user_id == current_user_id, User.is_private.is_(False)),
+                ~Story.user_id.in_(excluded_ids) if excluded_ids else True,
+                or_(Story.visibility == "EVERYONE", Story.user_id == current_user_id,
+                    and_(Story.visibility == "FOLLOWERS", Story.user_id.in_(following or [-1])),
+                    and_(Story.visibility == "FRIENDS", Story.user_id.in_((following & followers) or [-1])))
             )
             .order_by(desc(Story.created_at))
         )
@@ -71,6 +80,8 @@ class StoryService:
         grouped: Dict[int, Dict[str, Any]] = {}
 
         for story, user in results:
+            if not StoryService.can_view(db, story, current_user_id):
+                continue
             story_dict = StoryService._format_story(db, story, current_user_id=current_user_id)
 
             if user.id not in grouped:
@@ -106,6 +117,8 @@ class StoryService:
 
         if not story:
             return False
+        if not StoryService.can_view(db, story, viewer_id):
+            raise HTTPException(status_code=404, detail="Story not found.")
 
         # Don't record view if viewing own story
         if story.user_id == viewer_id:
@@ -179,6 +192,8 @@ class StoryService:
 
         if story.user_id == sender.id:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot reply to your own story.")
+        if not StoryService.can_view(db, story, sender.id):
+            raise HTTPException(status_code=404, detail="Story not found.")
 
         # Get or create 1-to-1 conversation with story author
         conv = ConversationService.get_or_create_direct_conversation(db, sender.id, story.user_id)
@@ -209,6 +224,7 @@ class StoryService:
             "media_url": story.media_url,
             "media_type": story.media_type,
             "caption": story.caption,
+            "visibility": story.visibility,
             "created_at": story.created_at.isoformat(),
             "expires_at": story.expires_at.isoformat(),
             "views_count": views_count,
@@ -216,3 +232,26 @@ class StoryService:
             "is_own": story.user_id == current_user_id,
             "user": user_dict
         }
+
+    @staticmethod
+    def can_view(db: Session, story: Story, viewer_id: int) -> bool:
+        if story.user_id == viewer_id:
+            return True
+        owner = db.get(User, story.user_id)
+        if not owner or owner.is_private:
+            return False
+        expires = story.expires_at.replace(tzinfo=timezone.utc) if story.expires_at.tzinfo is None else story.expires_at
+        if expires < datetime.now(timezone.utc) or db.query(BlockedUser.id).filter(
+            or_(and_(BlockedUser.blocker_id == viewer_id, BlockedUser.blocked_id == story.user_id),
+                and_(BlockedUser.blocker_id == story.user_id, BlockedUser.blocked_id == viewer_id))).first():
+            return False
+        if not policy_allows(db, story.user_id, viewer_id, "story_audience"):
+            return False
+        if story.visibility == "EVERYONE":
+            return True
+        follows = db.query(Follow.id).filter_by(follower_id=viewer_id, following_id=story.user_id).first()
+        if story.visibility == "FOLLOWERS":
+            return bool(follows)
+        if story.visibility == "FRIENDS":
+            return bool(follows and db.query(Follow.id).filter_by(follower_id=story.user_id, following_id=viewer_id).first())
+        return False

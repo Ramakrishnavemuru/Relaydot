@@ -4,6 +4,7 @@ import shutil
 from pathlib import Path
 from typing import Dict, Any
 from fastapi import UploadFile
+from starlette.concurrency import run_in_threadpool
 from app.config import settings
 
 # Attempt to configure Cloudinary if credentials are provided
@@ -28,12 +29,15 @@ async def upload_file_service(file: UploadFile) -> Dict[str, Any]:
     Upload a file either to Cloudinary (if configured) or to local storage (fallback).
     Returns dict with file_url, file_name, file_type, file_size, and public_id.
     """
-    original_filename = file.filename or "uploaded_file"
+    original_filename = (file.filename or "uploaded_file").replace("\\", "/").split("/")[-1]
     file_type = file.content_type or "application/octet-stream"
     
-    # Read file content to get size and write
-    content = await file.read()
-    file_size = len(content)
+    # UploadFile is spooled to disk for larger files; keep it streaming instead of
+    # materializing the whole upload in the event loop's memory.
+    file_size = file.size
+    if file_size is None:
+        file_size = await run_in_threadpool(lambda: file.file.seek(0, os.SEEK_END))
+    await file.seek(0)
 
     if cloudinary_configured:
         try:
@@ -44,8 +48,8 @@ async def upload_file_service(file: UploadFile) -> Dict[str, Any]:
             elif file_type.startswith("video/"):
                 resource_type = "video"
             
-            result = cloudinary.uploader.upload(
-                content,
+            result = await run_in_threadpool(cloudinary.uploader.upload,
+                file.file,
                 resource_type=resource_type,
                 folder="realtime_chat"
             )
@@ -56,17 +60,20 @@ async def upload_file_service(file: UploadFile) -> Dict[str, Any]:
                 "file_size": file_size,
                 "public_id": result.get("public_id")
             }
-        except Exception as e:
+        except Exception:
             # Fall back to local if Cloudinary fails
-            pass
+            await file.seek(0)
 
     # Local fallback
     ext = original_filename.rsplit(".", 1)[-1] if "." in original_filename else ""
     unique_filename = f"{uuid.uuid4().hex}{('.' + ext) if ext else ''}"
     file_path = os.path.join(settings.UPLOAD_DIR, unique_filename)
 
-    with open(file_path, "wb") as buffer:
-        buffer.write(content)
+    def copy_to_local():
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer, length=1024 * 1024)
+
+    await run_in_threadpool(copy_to_local)
 
     file_url = f"/uploads/{unique_filename}"
     return {

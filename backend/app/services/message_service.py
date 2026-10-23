@@ -1,16 +1,19 @@
-from datetime import datetime, timezone
+from datetime import datetime, date, timedelta, timezone
+from collections import defaultdict
 from typing import List, Optional, Dict, Any
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, Request
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, asc, or_, and_, select
+from sqlalchemy import desc, asc, or_, and_, select, func
 
 from app.models.conversation import Conversation, ConversationMember
-from app.models.message import Message, MessageRead
+from app.models.message import Message, MessageRead, MessageBookmark
 from app.models.reaction import MessageReaction
 from app.models.attachment import Attachment
 from app.models.user import User
 from app.schemas.message import MessageCreate, MessageEdit
 from app.services.user_service import UserService
+from app.services.settings_service import alert_allowed, require_policy, get_settings
+from app.services.chat_lock import is_chat_unlocked
 from app.utils.helpers import sanitize_text
 from app.websocket.manager import manager
 from app.websocket.events import (
@@ -25,32 +28,75 @@ from app.websocket.events import (
 
 class MessageService:
     @staticmethod
-    def get_message_response_dict(db: Session, message: Message, current_user_id: Optional[int] = None) -> Dict[str, Any]:
+    def _message_context(db: Session, messages: List[Message], current_user_id: Optional[int]) -> Dict[str, Any]:
+        """Load the related rows for a page in fixed-size query batches."""
+        ids = [message.id for message in messages]
+        conversation_ids = {message.conversation_id for message in messages}
+        replies = {item.id: item for item in db.query(Message).filter(
+            Message.id.in_({message.reply_to_id for message in messages if message.reply_to_id})).all()}
+        sender_ids = {message.sender_id for message in messages} | {reply.sender_id for reply in replies.values()}
+        users = {user.id: user for user in db.query(User).filter(User.id.in_(sender_ids)).all()}
+        attachments = defaultdict(list)
+        for attachment in db.query(Attachment).filter(Attachment.message_id.in_(ids)).all():
+            attachments[attachment.message_id].append(attachment)
+        reactions = defaultdict(list)
+        for reaction, user in db.query(MessageReaction, User).join(
+            User, User.id == MessageReaction.user_id).filter(MessageReaction.message_id.in_(ids)).all():
+            reactions[reaction.message_id].append((reaction, user))
+        reads = defaultdict(list)
+        for read in db.query(MessageRead).filter(MessageRead.message_id.in_(ids)).all():
+            reads[read.message_id].append(read.user_id)
+        conversations = {conv.id: conv for conv in db.query(Conversation).filter(
+            Conversation.id.in_(conversation_ids)).all()}
+        members = defaultdict(list)
+        for member in db.query(ConversationMember).filter(
+            ConversationMember.conversation_id.in_(conversation_ids)).all():
+            members[member.conversation_id].append(member)
+        now = datetime.now(timezone.utc)
+        thread_counts = dict(db.query(Message.thread_root_id, func.count(Message.id)).filter(
+            Message.thread_root_id.in_(ids), Message.deleted_at.is_(None),
+            or_(Message.expires_at.is_(None), Message.expires_at > now)
+        ).group_by(Message.thread_root_id).all())
+        bookmarks = set()
+        if current_user_id:
+            bookmarks = {message_id for (message_id,) in db.query(MessageBookmark.message_id).filter(
+                MessageBookmark.user_id == current_user_id, MessageBookmark.message_id.in_(ids)).all()}
+        return {"users": users, "replies": replies, "attachments": attachments,
+                "reactions": reactions, "reads": reads, "conversations": conversations,
+                "members": members, "thread_counts": thread_counts, "bookmarks": bookmarks}
+
+    @staticmethod
+    def get_message_response_dict(db: Session, message: Message, current_user_id: Optional[int] = None,
+                                  context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Convert a Message model to a complete JSON-ready response dictionary."""
-        is_deleted = bool(message.deleted_at)
+        expires_at = message.expires_at.replace(tzinfo=timezone.utc) if message.expires_at and message.expires_at.tzinfo is None else message.expires_at
+        is_deleted = bool(message.deleted_at or (expires_at and expires_at <= datetime.now(timezone.utc)))
         content = "This message was deleted" if is_deleted else message.content
 
-        sender = db.query(User).filter(User.id == message.sender_id).first()
+        sender = context["users"].get(message.sender_id) if context is not None else db.query(User).filter(User.id == message.sender_id).first()
         sender_dict = sender.to_dict(include_sensitive=False) if sender else None
 
         # Reply-to info
         reply_dict = None
         if message.reply_to_id:
-            reply_msg = db.query(Message).filter(Message.id == message.reply_to_id).first()
+            reply_msg = context["replies"].get(message.reply_to_id) if context is not None else db.query(Message).filter(
+                Message.id == message.reply_to_id, Message.conversation_id == message.conversation_id).first()
+            if reply_msg and reply_msg.conversation_id != message.conversation_id:
+                reply_msg = None
             if reply_msg:
-                reply_sender = db.query(User).filter(User.id == reply_msg.sender_id).first()
+                reply_sender = context["users"].get(reply_msg.sender_id) if context is not None else db.query(User).filter(User.id == reply_msg.sender_id).first()
                 reply_dict = {
                     "id": reply_msg.id,
                     "sender_id": reply_msg.sender_id,
                     "sender_name": (reply_sender.display_name or reply_sender.username) if reply_sender else "User",
-                    "content": "This message was deleted" if reply_msg.deleted_at else reply_msg.content[:100],
+                    "content": "This message was deleted" if reply_msg.deleted_at or (reply_msg.expires_at and reply_msg.expires_at.replace(tzinfo=timezone.utc) <= datetime.now(timezone.utc)) else reply_msg.content[:100],
                     "message_type": reply_msg.message_type
                 }
 
         # Attachments
         attachments_list = []
         if not is_deleted:
-            atts = db.query(Attachment).filter(Attachment.message_id == message.id).all()
+            atts = context["attachments"][message.id] if context is not None else db.query(Attachment).filter(Attachment.message_id == message.id).all()
             for a in atts:
                 attachments_list.append({
                     "id": a.id,
@@ -65,9 +111,8 @@ class MessageService:
 
         # Reactions
         reactions_list = []
-        rxns = db.query(MessageReaction, User).join(User, User.id == MessageReaction.user_id).filter(
-            MessageReaction.message_id == message.id
-        ).all()
+        rxns = context["reactions"][message.id] if context is not None else db.query(MessageReaction, User).join(
+            User, User.id == MessageReaction.user_id).filter(MessageReaction.message_id == message.id).all()
         for r, u in rxns:
             reactions_list.append({
                 "id": r.id,
@@ -79,14 +124,16 @@ class MessageService:
             })
 
         # Reads
-        reads = db.query(MessageRead).filter(MessageRead.message_id == message.id).all()
-        read_by_ids = [r.user_id for r in reads]
+        read_by_ids = context["reads"][message.id] if context is not None else [r.user_id for r in db.query(
+            MessageRead).filter(MessageRead.message_id == message.id).all()]
 
         # Determine status: SENT, DELIVERED, READ
         status_val = "SENT"
-        conv = db.query(Conversation).filter(Conversation.id == message.conversation_id).first()
+        conv = context["conversations"].get(message.conversation_id) if context is not None else db.query(
+            Conversation).filter(Conversation.id == message.conversation_id).first()
         if conv and conv.type == "DIRECT":
-            other_member = db.query(ConversationMember).filter(
+            other_member = next((member for member in context["members"][conv.id]
+                if member.user_id != message.sender_id), None) if context is not None else db.query(ConversationMember).filter(
                 ConversationMember.conversation_id == conv.id,
                 ConversationMember.user_id != message.sender_id
             ).first()
@@ -108,6 +155,16 @@ class MessageService:
             "message_type": message.message_type,
             "reply_to_id": message.reply_to_id,
             "reply_to": reply_dict,
+            "thread_root_id": message.thread_root_id,
+            "thread_reply_count": context["thread_counts"].get(message.id, 0) if context is not None else db.query(func.count(Message.id)).filter(
+                Message.thread_root_id == message.id, Message.deleted_at.is_(None),
+                or_(Message.expires_at.is_(None), Message.expires_at > datetime.now(timezone.utc))).scalar() or 0,
+            "expires_at": message.expires_at.isoformat() if message.expires_at else None,
+            "pinned_at": message.pinned_at.isoformat() if message.pinned_at else None,
+            "bookmarked": bool(message.id in context["bookmarks"]) if context is not None else bool(
+                current_user_id and db.query(MessageBookmark.id).filter_by(
+                    message_id=message.id, user_id=current_user_id).first()),
+            "is_forwarded": bool(message.is_forwarded),
             "created_at": message.created_at.isoformat() if message.created_at else None,
             "updated_at": message.updated_at.isoformat() if message.updated_at else None,
             "deleted_at": message.deleted_at.isoformat() if message.deleted_at else None,
@@ -121,8 +178,13 @@ class MessageService:
         }
 
     @staticmethod
-    async def send_message(db: Session, sender_id: int, msg_data: MessageCreate) -> Dict[str, Any]:
+    async def send_message(db: Session, sender_id: int, msg_data: MessageCreate,
+                           scheduled_message_id: Optional[int] = None) -> Dict[str, Any]:
         conv_id = msg_data.conversation_id
+        if scheduled_message_id:
+            already_sent = db.query(Message).filter_by(scheduled_message_id=scheduled_message_id).first()
+            if already_sent:
+                return MessageService.get_message_response_dict(db, already_sent, sender_id)
 
         # Verify sender is member of conversation
         membership = db.query(ConversationMember).filter(
@@ -154,6 +216,25 @@ class MessageService:
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Cannot send messages because one of the users is blocked."
                 )
+            if other:
+                require_policy(db, other.user_id, sender_id, "dm_policy", "direct messages")
+
+        if msg_data.reply_to_id:
+            replied = db.get(Message, msg_data.reply_to_id)
+            if not replied or replied.conversation_id != conv_id or replied.deleted_at or (
+                replied.expires_at and replied.expires_at.replace(tzinfo=timezone.utc) <= datetime.now(timezone.utc)):
+                raise HTTPException(400, "Reply target is not available in this conversation")
+        thread_root_id = None
+        if msg_data.thread_root_id:
+            root = db.get(Message, msg_data.thread_root_id)
+            if not root or root.conversation_id != conv_id or root.deleted_at or (
+                root.expires_at and root.expires_at.replace(tzinfo=timezone.utc) <= datetime.now(timezone.utc)):
+                raise HTTPException(400, "Thread target is not available in this conversation")
+            thread_root_id = root.thread_root_id or root.id
+        if msg_data.message_type not in {"TEXT", "IMAGE", "FILE", "AUDIO", "VIDEO"}:
+            raise HTTPException(400, "Unsupported message type")
+        if not msg_data.content.strip() and not msg_data.attachments:
+            raise HTTPException(400, "Message cannot be empty")
 
         # Create message record
         new_msg = Message(
@@ -162,6 +243,10 @@ class MessageService:
             content=sanitize_text(msg_data.content),
             message_type=msg_data.message_type or "TEXT",
             reply_to_id=msg_data.reply_to_id,
+            thread_root_id=thread_root_id,
+            is_forwarded=msg_data.is_forwarded,
+            scheduled_message_id=scheduled_message_id,
+            expires_at=datetime.now(timezone.utc) + timedelta(seconds=msg_data.expires_in_seconds) if msg_data.expires_in_seconds else None,
             created_at=datetime.now(timezone.utc)
         )
         db.add(new_msg)
@@ -191,6 +276,53 @@ class MessageService:
         # Broadcast via WebSocket
         payload = create_event(EVENT_MESSAGE, response_data)
         await manager.broadcast_to_conversation(conv_id, payload, db=db, exclude_user_id=None)
+        if thread_root_id:
+            await manager.broadcast_to_conversation(conv_id, {"event": "thread.reply.created", "data": {
+                "conversation_id": conv_id, "thread_root_id": thread_root_id, "message_id": new_msg.id}}, db=db)
+
+        # Keep message activity in the same notification inbox as social events.
+        from app.models.social import SocialNotification
+        recipients = db.query(ConversationMember).filter(
+            ConversationMember.conversation_id == conv_id,
+            ConversationMember.user_id != sender_id).all()
+        for recipient_member in recipients:
+            recipient_id = recipient_member.user_id
+            if UserService.is_blocked(db, sender_id, recipient_id):
+                continue
+            item = SocialNotification(recipient_id=recipient_id, actor_id=sender_id,
+                type="message", entity_type="conversation", entity_id=conv_id)
+            db.add(item)
+            db.flush()
+            may_alert = alert_allowed(db, recipient_id,
+                "direct" if conv.type == "DIRECT" else "group", conv_id)
+            settings_row = get_settings(db, recipient_id)
+            sender = db.get(User, sender_id)
+            await manager.send_to_user(recipient_id, {"event": "social_notification", "data": {
+                "id": item.id, "type": "message", "entity_type": "conversation",
+                "entity_id": conv_id, "read": False, "alert": may_alert,
+                "preview": bool(settings_row.notification_preview) if settings_row else True,
+                "title": sender.display_name or sender.username,
+                "body": (new_msg.content or "Sent an attachment")[:100]
+                    if not settings_row or settings_row.notification_preview else None,
+                "created_at": item.created_at.isoformat(),
+                "actor": sender.to_dict(False)
+            }}, member=recipient_member)
+        if thread_root_id:
+            root = db.get(Message, thread_root_id)
+            root_is_member = root and db.query(ConversationMember.id).filter_by(
+                conversation_id=conv_id, user_id=root.sender_id).first()
+            if root_is_member and root.sender_id != sender_id and not UserService.is_blocked(db, sender_id, root.sender_id):
+                thread_notice = SocialNotification(recipient_id=root.sender_id, actor_id=sender_id,
+                    type="thread_reply", entity_type="conversation", entity_id=conv_id)
+                db.add(thread_notice)
+                db.flush()
+                await manager.send_to_user(root.sender_id, {"event":"social_notification", "data":{
+                    "id":thread_notice.id,"type":"thread_reply","entity_type":"conversation",
+                    "entity_id":conv_id,"read":False,
+                    "alert":alert_allowed(db, root.sender_id, "direct" if conv.type == "DIRECT" else "group", conv_id),
+                    "created_at":thread_notice.created_at.isoformat(),
+                    "actor":db.get(User, sender_id).to_dict(False)}})
+        db.commit()
 
         return response_data
 
@@ -209,7 +341,7 @@ class MessageService:
                 detail="You can only edit your own messages."
             )
 
-        if msg.deleted_at:
+        if msg.deleted_at or (msg.expires_at and msg.expires_at.replace(tzinfo=timezone.utc) <= datetime.now(timezone.utc)):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Cannot edit a deleted message."
@@ -275,6 +407,8 @@ class MessageService:
         ).first()
         if not membership:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a conversation member.")
+        if msg.deleted_at or (msg.expires_at and msg.expires_at.replace(tzinfo=timezone.utc) <= datetime.now(timezone.utc)):
+            raise HTTPException(status_code=404, detail="Message not found.")
 
         existing = db.query(MessageReaction).filter(
             MessageReaction.message_id == message_id,
@@ -313,6 +447,9 @@ class MessageService:
     @staticmethod
     async def mark_as_read(db: Session, user_id: int, conversation_id: int) -> int:
         """Mark all unread messages in conversation as read by user."""
+        member = db.query(ConversationMember).filter_by(conversation_id=conversation_id, user_id=user_id).first()
+        if not member:
+            raise HTTPException(status_code=403, detail="Not a conversation member.")
         # Find messages in conversation not sent by user and not yet read by user
         read_subquery = select(MessageRead.message_id).filter(MessageRead.user_id == user_id)
 
@@ -321,6 +458,8 @@ class MessageService:
             .filter(
                 Message.conversation_id == conversation_id,
                 Message.sender_id != user_id,
+                Message.deleted_at.is_(None),
+                or_(Message.expires_at.is_(None), Message.expires_at > datetime.now(timezone.utc)),
                 ~Message.id.in_(read_subquery)
             )
             .all()
@@ -336,10 +475,6 @@ class MessageService:
             marked_ids.append(m.id)
 
         # Update last_read_message_id on member record
-        member = db.query(ConversationMember).filter(
-            ConversationMember.conversation_id == conversation_id,
-            ConversationMember.user_id == user_id
-        ).first()
         if member and marked_ids:
             member.last_read_message_id = max(marked_ids)
 
@@ -374,45 +509,68 @@ class MessageService:
         if not membership:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a conversation member.")
 
-        query = db.query(Message).filter(Message.conversation_id == conversation_id)
+        query = db.query(Message).filter(Message.conversation_id == conversation_id,
+            Message.thread_root_id.is_(None),
+            Message.id > (membership.cleared_before_message_id or 0))
         if before_id:
             query = query.filter(Message.id < before_id)
 
-        messages = query.order_by(desc(Message.created_at)).limit(limit).all()
+        messages = query.order_by(desc(Message.created_at), desc(Message.id)).limit(limit).all()
         # Reverse to show oldest first in the page
         messages.reverse()
 
-        return [MessageService.get_message_response_dict(db, m, current_user_id=user_id) for m in messages]
+        if not messages:
+            return []
+        context = MessageService._message_context(db, messages, user_id)
+        return [MessageService.get_message_response_dict(db, m, current_user_id=user_id, context=context)
+                for m in messages]
 
     @staticmethod
-    def search_messages(db: Session, user_id: int, query_str: str) -> List[Dict[str, Any]]:
+    def search_messages(db: Session, user_id: int, query_str: str,
+                        conversation_id: Optional[int] = None, sender: Optional[str] = None,
+                        before: Optional[date] = None, after: Optional[date] = None,
+                        has: Optional[str] = None, limit: int = 30,
+                        offset: int = 0, request: Request | None = None) -> List[Dict[str, Any]]:
         clean_q = query_str.strip()
-        if not clean_q:
+        if not any((clean_q, conversation_id, sender, before, after, has)):
             return []
 
         # Find all conversations the user is a member of
-        user_convs = (
-            db.query(ConversationMember.conversation_id)
-            .filter(ConversationMember.user_id == user_id)
-            .all()
-        )
-        conv_ids = [c[0] for c in user_convs]
+        user_convs = db.query(ConversationMember).filter(ConversationMember.user_id == user_id).all()
+        available = [member for member in user_convs if is_chat_unlocked(request, member)]
+        conv_ids = [member.conversation_id for member in available]
         if not conv_ids:
             return []
 
-        messages = (
+        query = (
             db.query(Message, Conversation, User)
             .join(Conversation, Conversation.id == Message.conversation_id)
             .join(User, User.id == Message.sender_id)
             .filter(
                 Message.conversation_id.in_(conv_ids),
+                or_(*(and_(Message.conversation_id == member.conversation_id,
+                           Message.id > (member.cleared_before_message_id or 0)) for member in available)),
                 Message.deleted_at.is_(None),
-                Message.content.ilike(f"%{clean_q}%")
+                or_(Message.expires_at.is_(None), Message.expires_at > datetime.now(timezone.utc)),
             )
-            .order_by(desc(Message.created_at))
-            .limit(30)
-            .all()
         )
+        if clean_q:
+            escaped = clean_q.replace('\\','\\\\').replace('%','\\%').replace('_','\\_')
+            query = query.filter(Message.content.ilike(f"%{escaped}%", escape='\\'))
+        if conversation_id:
+            query = query.filter(Message.conversation_id == conversation_id)
+        if sender:
+            query = query.filter(User.username.ilike(sender.strip()))
+        if before:
+            query = query.filter(Message.created_at < datetime.combine(before + timedelta(days=1), datetime.min.time()))
+        if after:
+            query = query.filter(Message.created_at >= datetime.combine(after, datetime.min.time()))
+        if has:
+            attachment = db.query(Attachment.id).filter(Attachment.message_id == Message.id)
+            if has == 'image':
+                attachment = attachment.filter(Attachment.file_type.like('image/%'))
+            query = query.filter(attachment.exists())
+        messages = query.order_by(desc(Message.created_at), desc(Message.id)).offset(offset).limit(limit).all()
 
         results = []
         for m, conv, sender in messages:

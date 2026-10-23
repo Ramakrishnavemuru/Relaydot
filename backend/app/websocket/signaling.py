@@ -1,7 +1,9 @@
 import logging
 from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
+from sqlalchemy import select
 from app.models.user import User
+from app.models.conversation import Conversation, ConversationMember
 from app.websocket.manager import manager
 from app.websocket.events import create_event
 from app.websocket.call_events import (
@@ -48,6 +50,18 @@ class CallSignalingHandler:
 
         if event_type == EVENT_CALL_INVITE:
             logger.info(f"[Call] Invite from {sender.id} to {target_user_id} ({data.get('call_type', 'audio')})")
+            shared_direct = select(ConversationMember.conversation_id).join(
+                Conversation, Conversation.id == ConversationMember.conversation_id).where(
+                ConversationMember.user_id == sender.id, Conversation.type == "DIRECT")
+            muted = db.query(ConversationMember.id).filter(
+                ConversationMember.user_id == target_user_id,
+                ConversationMember.mute_calls.is_(True),
+                ConversationMember.conversation_id.in_(shared_direct)).first()
+            if muted:
+                await manager.send_to_user(sender.id, create_event(EVENT_CALL_REJECT, {
+                    "reason": "muted", "target_user_id": target_user_id,
+                    "message": "This contact is not accepting calls right now."}))
+                return True
             # If target user is not online, immediately notify caller that target is offline
             if not manager.is_user_online(target_user_id):
                 reject_payload = create_event(EVENT_CALL_REJECT, {

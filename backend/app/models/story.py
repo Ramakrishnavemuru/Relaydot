@@ -12,6 +12,7 @@ class Story(Base):
     media_url = Column(String(500), nullable=False)
     media_type = Column(String(20), default="IMAGE")  # IMAGE, VIDEO, TEXT
     caption = Column(Text, nullable=True)
+    visibility = Column(String(12), default="EVERYONE", nullable=False)
 
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     expires_at = Column(

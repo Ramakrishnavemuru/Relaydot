@@ -15,9 +15,14 @@ class User(Base):
     display_name = Column(String(100), nullable=True)
     avatar_url = Column(String(500), nullable=True)
     bio = Column(Text, nullable=True)
+    cover_url = Column(String(500), nullable=True)
+    website = Column(String(500), nullable=True)
     last_seen = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=True)
     is_online = Column(Boolean, default=False)
     is_verified = Column(Boolean, default=False, nullable=False)
+    role = Column(String(12), default="USER", nullable=False, index=True)
+    account_state = Column(String(16), default="ACTIVE", nullable=False, index=True)
+    restricted_until = Column(DateTime, nullable=True)
 
     # 2FA
     totp_secret = Column(String(64), nullable=True)
@@ -27,6 +32,7 @@ class User(Base):
     show_last_seen = Column(Boolean, default=True)
     show_online = Column(Boolean, default=True)
     show_read_receipts = Column(Boolean, default=True)
+    is_private = Column(Boolean, default=False, nullable=False)
 
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
@@ -41,6 +47,7 @@ class User(Base):
     sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
     passkeys = relationship("Passkey", back_populates="user", cascade="all, delete-orphan")
     recovery_codes = relationship("RecoveryCode", back_populates="user", cascade="all, delete-orphan")
+    settings = relationship("UserSettings", back_populates="user", uselist=False, cascade="all, delete-orphan")
 
     def to_dict(self, include_sensitive=False):
         data = {
@@ -51,14 +58,19 @@ class User(Base):
             "display_name": self.display_name or self.username,
             "avatar_url": self.avatar_url,
             "bio": self.bio,
+            "cover_url": self.cover_url,
+            "website": self.website,
             "is_online": self.is_online if self.show_online else False,
             "is_verified": self.is_verified,
+            "role": self.role if include_sensitive else None,
+            "account_state": self.account_state if include_sensitive else None,
             "totp_enabled": self.totp_enabled,
             "has_password": bool(self.password_hash),
             "last_seen": self.last_seen.isoformat() if self.last_seen and self.show_last_seen else None,
             "show_last_seen": self.show_last_seen,
             "show_online": self.show_online,
             "show_read_receipts": self.show_read_receipts,
+            "is_private": bool(self.is_private),
             "created_at": self.created_at.isoformat() if self.created_at else None
         }
         if not include_sensitive:

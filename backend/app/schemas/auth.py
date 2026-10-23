@@ -48,6 +48,7 @@ class TokenResponse(BaseModel):
     requires_2fa: bool = False
     ticket: Optional[str] = None
     methods: Optional[List[str]] = None
+    demo_code: Optional[str] = None
 
 
 class TwoFactorVerifyRequest(BaseModel):
@@ -70,6 +71,7 @@ class PasskeyRegisterVerifyRequest(BaseModel):
 
 
 class PasskeyLoginVerifyRequest(BaseModel):
+    challenge_id: str
     response: Dict[str, Any]
 
 
