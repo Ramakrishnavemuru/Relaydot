@@ -60,9 +60,14 @@ from app.utils.device import parse_device_name, get_client_ip
 # In-memory challenge stores with timestamp
 WEBAUTHN_CHALLENGES: Dict[str, Dict[str, Any]] = {}
 RESET_CODES: Dict[str, Dict[str, Any]] = {}
-def demo_codes_enabled() -> bool:
-    return settings.APP_ENV.lower() == "development" and settings.RP_ID in {"localhost", "127.0.0.1"} and not os.environ.get("RENDER")
 
+
+def demo_codes_enabled() -> bool:
+    """Enable demo OTPs only when explicitly enabled for testing."""
+    return (
+        os.environ.get("DEMO_CODES_ENABLED", "").strip().lower() == "true"
+        and settings.APP_ENV.strip().lower() == "development"
+    )
 
 def clean_expired_challenges():
     """Remove webauthn challenges older than 10 minutes."""
