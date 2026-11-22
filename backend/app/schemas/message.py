@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Literal
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 from urllib.parse import urlparse
 from app.schemas.user import UserPublicResponse
@@ -16,11 +16,9 @@ class AttachmentCreate(BaseModel):
     @classmethod
     def uploaded_url(cls, value: str) -> str:
         parsed = urlparse(value)
-        if value.startswith("/uploads/") and parsed.path == value and ".." not in value:
+        if value.startswith("/api/messages/attachments/") and len(value.rsplit("/", 1)[-1]) == 32 and all(c in "0123456789abcdef" for c in value.rsplit("/", 1)[-1]) and parsed.path == value:
             return value
-        if parsed.scheme == "https" and parsed.hostname == "res.cloudinary.com":
-            return value
-        raise ValueError("Attachment must use an uploaded file URL")
+        raise ValueError("Attachment must use a private chat upload URL")
 
 
 class AttachmentResponse(BaseModel):
@@ -52,6 +50,8 @@ class ReactionResponse(BaseModel):
 
 
 class MessageCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    encryption_version: Literal[0] = 0
     conversation_id: int
     content: str = Field(..., max_length=10000)
     message_type: str = "TEXT"  # TEXT, IMAGE, FILE, SYSTEM
@@ -63,6 +63,8 @@ class MessageCreate(BaseModel):
 
 
 class ScheduledMessageCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    encryption_version: Literal[0] = 0
     conversation_id: int
     content: str = Field(..., min_length=1, max_length=10000)
     expires_in_seconds: Optional[int] = Field(None, ge=10, le=604800)
@@ -76,6 +78,8 @@ class ForwardMessageCreate(BaseModel):
 
 
 class MessageEdit(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    encryption_version: Literal[0] = 0
     content: str = Field(..., min_length=1, max_length=10000)
 
 
@@ -93,6 +97,7 @@ class MessageReplyPreview(BaseModel):
 
 
 class MessageResponse(BaseModel):
+    encryption_version: Literal[0] = 0
     model_config = ConfigDict(from_attributes=True)
 
     id: int

@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, DateTime, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, Integer, DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -11,6 +11,7 @@ class StoryView(Base):
     story_id = Column(Integer, ForeignKey("stories.id", ondelete="CASCADE"), nullable=False, index=True)
     viewer_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     viewed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    audience_kind = Column(String(16), default="UNKNOWN", nullable=False)
 
     __table_args__ = (
         UniqueConstraint("story_id", "viewer_id", name="uq_story_viewer"),

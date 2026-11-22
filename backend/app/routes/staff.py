@@ -3,9 +3,9 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, UploadFile, File
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response, UploadFile, File
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
@@ -20,6 +20,8 @@ from app.security.jwt import hash_token
 from app.security.jwt import decode_token
 from app.schemas.auth import LoginRequest, TwoFactorVerifyRequest
 from app.services.auth_service import AuthService
+from app.services import staff_recovery
+from app.websocket.manager import manager
 from app.routes.auth import guard_auth
 from app.services.rate_limit import throttle
 
@@ -96,6 +98,54 @@ class ReportUpdate(BaseModel):
     priority: str | None = None
     assigned_to_id: int | None = None
     reason: str = Field(min_length=3, max_length=500)
+
+
+class StaffRecoveryRequest(BaseModel):
+    email: EmailStr
+
+
+class StaffRecoveryReset(BaseModel):
+    token: str = Field(min_length=40, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
+    totp_code: str = Field(pattern=r"^\d{6}$")
+    new_password: str = Field(min_length=12, max_length=72)
+    confirm_password: str = Field(min_length=12, max_length=72)
+
+
+def require_recovery_origin(request: Request):
+    origin = request.headers.get("origin")
+    if origin and origin != staff_recovery.configured_origin():
+        raise HTTPException(403, "Recovery request origin is not allowed")
+
+
+@router.post("/staff/auth/recovery/request")
+def request_staff_recovery(data: StaffRecoveryRequest, request: Request,
+                           background_tasks: BackgroundTasks, response: Response,
+                           db: Session = Depends(get_db)):
+    response.headers["Cache-Control"] = "no-store"
+    require_recovery_origin(request)
+    if not staff_recovery.mail_ready():
+        raise HTTPException(503, "Staff password recovery is temporarily unavailable.")
+    guard_auth(db, request, "STAFF_RESET_SEND", data.email.lower(), 5, 60)
+    guard_auth(db, request, "STAFF_RESET_SEND_IP", "all", 25, 60)
+    delivery = staff_recovery.issue_reset_link(db, data.email)
+    if delivery:
+        staff_recovery.queue_reset_email(background_tasks, *delivery)
+    return {"message": staff_recovery.GENERIC_RESPONSE}
+
+
+@router.post("/staff/auth/recovery/reset")
+async def complete_staff_recovery(data: StaffRecoveryReset, request: Request,
+                                  background_tasks: BackgroundTasks, response: Response,
+                                  db: Session = Depends(get_db)):
+    response.headers["Cache-Control"] = "no-store"
+    require_recovery_origin(request)
+    guard_auth(db, request, "STAFF_RESET_VERIFY", hash_token(data.token), 10, 15)
+    guard_auth(db, request, "STAFF_RESET_VERIFY_IP", "all", 40, 60)
+    user_id, email = staff_recovery.reset_staff_password(
+        db, data.token, data.totp_code, data.new_password, data.confirm_password)
+    await manager.close_other_sessions(user_id, None)
+    staff_recovery.queue_changed_notice(background_tasks, email)
+    return {"message": "Password changed. Sign in to your staff account."}
 
 
 @router.post("/staff/auth/login")

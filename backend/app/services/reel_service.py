@@ -1,6 +1,7 @@
 """Reel visibility, ranking, signed media access, and shared social indexing."""
 import hashlib
 import hmac
+import html
 import re
 import time
 from datetime import datetime, timezone
@@ -13,7 +14,7 @@ from app.config import settings
 from app.models.user import User
 from app.models.social import Follow, Hashtag
 from app.models.reel import (Reel, ReelLike, ReelBookmark, ReelComment, ReelView,
-    ReelShare, ReelHashtag, ReelMention)
+    ReelShare, ReelHashtag, ReelMention, ReelPollOption, ReelPollVote)
 from app.services.feed_service import FeedService
 from app.services.user_service import UserService
 
@@ -26,7 +27,7 @@ def visible_query(db: Session, viewer_id: int):
     mutual = {row[0] for row in db.query(Follow.follower_id).filter(
         Follow.following_id == viewer_id, Follow.follower_id.in_(followed))} if followed else set()
     return db.query(Reel).filter(Reel.status == "PUBLISHED", Reel.deleted_at.is_(None),
-        or_(Reel.creator_id == viewer_id, Reel.creator_id.in_(
+        or_(Reel.creator_id == viewer_id, Reel.creator_id.in_(followed or [-1]), Reel.creator_id.in_(
             db.query(User.id).filter(User.is_private.is_(False)))),
         or_(Reel.visibility == "EVERYONE", Reel.creator_id == viewer_id,
             and_(Reel.visibility == "FOLLOWERS", Reel.creator_id.in_(followed or [-1])),
@@ -45,7 +46,7 @@ def get_visible(db: Session, public_id: str, viewer_id: int) -> Reel:
 
 
 def signed_url(reel: Reel, viewer_id: int, kind: str) -> str | None:
-    if not (reel.video_path if kind == "video" else reel.thumbnail_path):
+    if not (reel.video_path if kind in {"video", "download"} else reel.thumbnail_path):
         return None
     expires = int(time.time()) + 3600
     message = f"{reel.public_id}:{viewer_id}:{kind}:{expires}".encode()
@@ -63,33 +64,54 @@ def valid_signature(public_id: str, viewer_id: int, kind: str, expires: int, sig
 
 
 def serialize(db: Session, reel: Reel, viewer_id: int) -> dict:
+    # Older records are HTML-entity encoded. API consumers render plain text;
+    # decode once here so apostrophes and tags display literally in React text nodes.
     creator = db.get(User, reel.creator_id)
     count = lambda model: db.query(func.count(model.id)).filter(model.reel_id == reel.id).scalar() or 0
+    own = reel.creator_id == viewer_id
+    options = db.query(ReelPollOption).filter_by(reel_id=reel.id).order_by(ReelPollOption.position).all()
+    my_vote = db.query(ReelPollVote).filter_by(reel_id=reel.id, user_id=viewer_id).first() if options else None
+    poll_total = count(ReelPollVote) if options else 0
     return {"id":reel.id,"public_id":reel.public_id,"creator":creator.to_dict(False),
-        "creator_id":reel.creator_id,"caption":reel.caption,"visibility":reel.visibility,
-        "status":reel.status,"publish_requested":reel.publish_requested if reel.creator_id == viewer_id else None,
-        "error":reel.error if reel.creator_id == viewer_id else None,
+        "creator_id":reel.creator_id,"caption":html.unescape(reel.caption or ""),"visibility":reel.visibility,
+        "status":reel.status,"publish_requested":reel.publish_requested if own else None,
+        "error":reel.error if own else None,"location":html.unescape(reel.location or ""),
+        "scheduled_at":FeedService.iso(reel.scheduled_at) if own and reel.scheduled_at else None,
+        "hide_like_count":bool(reel.hide_like_count),"hide_share_count":bool(reel.hide_share_count),
+        "show_on_main_grid":bool(reel.show_on_main_grid),
+        "pinned":bool(reel.pinned_at) if own else bool(reel.pinned_at and reel.show_on_main_grid),
+        "pinned_at":FeedService.iso(reel.pinned_at) if reel.pinned_at and reel.show_on_main_grid else None,
+        "partnership_label":bool(reel.partnership_label),
+        "partnership_partner":html.unescape(reel.partnership_partner or ""),
+        "cover_crop_x":reel.cover_crop_x,"cover_crop_y":reel.cover_crop_y,"cover_zoom":reel.cover_zoom,
         "duration":reel.duration,"width":reel.width,"height":reel.height,
         "allow_comments":reel.allow_comments,"allow_download":reel.allow_download,
         "video_url":signed_url(reel, viewer_id, "video"),
+        "download_url":signed_url(reel, viewer_id, "download") if reel.allow_download or own else None,
         "thumbnail_url":signed_url(reel, viewer_id, "thumbnail"),
         "created_at":FeedService.iso(reel.created_at),
         "published_at":FeedService.iso(reel.published_at) if reel.published_at else None,
-        "likes_count":count(ReelLike),"comments_count":db.query(func.count(ReelComment.id)).filter(
+        "likes_count":count(ReelLike) if own or not reel.hide_like_count else None,"comments_count":db.query(func.count(ReelComment.id)).filter(
             ReelComment.reel_id == reel.id, ReelComment.deleted_at.is_(None)).scalar() or 0,
-        "views_count":count(ReelView),"shares_count":count(ReelShare),
+        "views_count":count(ReelView),"shares_count":count(ReelShare) if own or not reel.hide_share_count else None,
         "liked":db.query(ReelLike.id).filter_by(reel_id=reel.id,user_id=viewer_id).first() is not None,
         "bookmarked":db.query(ReelBookmark.id).filter_by(reel_id=reel.id,user_id=viewer_id).first() is not None,
         "following":db.query(Follow.id).filter_by(follower_id=viewer_id,following_id=reel.creator_id).first() is not None,
         "hashtags":[name for (name,) in db.query(Hashtag.name).join(ReelHashtag,
-            ReelHashtag.hashtag_id == Hashtag.id).filter(ReelHashtag.reel_id == reel.id)]}
+            ReelHashtag.hashtag_id == Hashtag.id).filter(ReelHashtag.reel_id == reel.id)],
+        "poll": [{"id":option.id,"label":html.unescape(option.label),
+            "votes":db.query(func.count(ReelPollVote.id)).filter_by(option_id=option.id).scalar() or 0}
+            for option in options] if my_vote or own else [{"id":option.id,"label":html.unescape(option.label)} for option in options],
+        "poll_total":poll_total if my_vote or own else None,
+        "my_poll_vote":my_vote.option_id if my_vote else None}
 
 
 def index_caption(db: Session, reel: Reel) -> list[int]:
     previous = {row[0] for row in db.query(ReelMention.user_id).filter_by(reel_id=reel.id)}
     db.query(ReelHashtag).filter_by(reel_id=reel.id).delete()
     db.query(ReelMention).filter_by(reel_id=reel.id).delete()
-    for name in {name.lower() for name in TAG.findall(reel.caption)}:
+    plain_caption = html.unescape(reel.caption)
+    for name in {name.lower() for name in TAG.findall(plain_caption)}:
         tag = db.query(Hashtag).filter_by(name=name).first()
         if not tag:
             tag = Hashtag(name=name)
@@ -97,7 +119,7 @@ def index_caption(db: Session, reel: Reel) -> list[int]:
             db.flush()
         db.add(ReelHashtag(reel_id=reel.id, hashtag_id=tag.id))
     mentioned = []
-    for name in {name.lower() for name in MENTION.findall(reel.caption)}:
+    for name in {name.lower() for name in MENTION.findall(plain_caption)}:
         user = db.query(User).filter(func.lower(User.username) == name).first()
         if user and user.id != reel.creator_id and not UserService.is_blocked(db, reel.creator_id, user.id):
             db.add(ReelMention(reel_id=reel.id, user_id=user.id))

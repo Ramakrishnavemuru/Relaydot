@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from fastapi.testclient import TestClient
+from conftest import BrowserTestClient as TestClient
 
 from app.main import app
 
@@ -85,7 +85,7 @@ def test_revoked_session_closes_active_websocket():
         user_id, auth = register(client, 'settings_socket')
         sessions = client.get('/api/auth/sessions', headers=auth).json()
         current = next(row for row in sessions if row['is_current'])
-        with client.websocket_connect('/ws', headers={'Origin': 'http://testserver', **auth}) as websocket:
+        with client.websocket_connect('/ws', headers={'Origin': 'http://localhost:8000', **auth}) as websocket:
             assert client.delete(f"/api/auth/sessions/{current['session_id']}", headers=auth).status_code == 200
             from starlette.websockets import WebSocketDisconnect
             try:

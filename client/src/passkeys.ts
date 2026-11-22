@@ -27,9 +27,12 @@ export async function registerPasskey(name: string) {
   } } })
 }
 
-export async function loginWithPasskey(identifier: string) {
-  if (!passkeysSupported()) throw new Error('Passkeys are unavailable in this browser.')
-  const suffix = identifier ? `?identifier=${encodeURIComponent(identifier)}` : ''
+export async function loginWithPasskey(identifier: string, staffOnly = false) {
+  if (!passkeysSupported()) throw new Error('Passkeys are unavailable here. Open Relaydot in a browser with passkey support.')
+  const params = new URLSearchParams()
+  if (identifier.trim()) params.set('identifier', identifier.trim())
+  if (staffOnly) params.set('staff_only', 'true')
+  const suffix = params.size ? `?${params}` : ''
   const options = await api<RequestOptions>(`/auth/passkeys/login/options${suffix}`, { method: 'POST' })
   const { challenge_id, ...publicKeyOptions } = options
   const credential = await navigator.credentials.get({ publicKey: {

@@ -130,10 +130,12 @@ class StoryService:
         ).first()
 
         if not existing:
+            from app.services.creator_events import audience_kind
             view = StoryView(
                 story_id=story_id,
                 viewer_id=viewer_id,
-                viewed_at=now
+                viewed_at=now,
+                audience_kind=audience_kind(db, story.user_id, viewer_id)
             )
             db.add(view)
             db.commit()

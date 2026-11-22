@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from uuid import uuid4
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean, Index
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -8,6 +9,7 @@ class Conversation(Base):
     __tablename__ = "conversations"
 
     id = Column(Integer, primary_key=True, index=True)
+    public_id = Column(String(32), nullable=False, unique=True, index=True, default=lambda: uuid4().hex)
     type = Column(String(20), nullable=False, default="DIRECT")  # DIRECT or GROUP
     name = Column(String(100), nullable=True)  # Name for group chats
     avatar_url = Column(String(500), nullable=True)

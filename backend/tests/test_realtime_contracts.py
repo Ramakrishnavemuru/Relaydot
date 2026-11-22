@@ -1,11 +1,9 @@
 """Exercise the contracts used by the redesigned live UI, with an isolated DB."""
 import base64
-from pathlib import Path
 
-from fastapi.testclient import TestClient
+from conftest import BrowserTestClient as TestClient
 from app.main import app
-from app.config import settings
-from app.services import cloudinary_service
+from app.routes import messages as message_routes
 
 
 def account(client, name):
@@ -57,8 +55,7 @@ def test_rest_ack_socket_echo_receipts_and_reconnect():
                 assert receive(reconnected,'message_delete')['id'] == sent['id']
 
 def test_pagination_search_and_shared_uploads(tmp_path, monkeypatch):
-    monkeypatch.setattr(settings,'UPLOAD_DIR',str(tmp_path))
-    monkeypatch.setattr(cloudinary_service,'cloudinary_configured',False)
+    monkeypatch.setattr(message_routes, 'CHAT_MEDIA_DIR', tmp_path)
     client = TestClient(app)
     alice, headers = account(client,'pagination_alice')
     bob, _ = account(client,'pagination_bob')
@@ -72,10 +69,10 @@ def test_pagination_search_and_shared_uploads(tmp_path, monkeypatch):
     results = client.get('/api/search/messages',headers=headers,params={'q':'History item 0'}).json()
     assert results[0]['message_id'] == earlier[0]['id']
     for name,content,mime in [('brief.txt',b'Acceptance review','text/plain'),('pixel.png',base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jFZkAAAAASUVORK5CYII='),'image/png')]:
-        uploaded = client.post('/api/uploads',headers=headers,files={'file':(name,content,mime)})
-        assert uploaded.status_code == 200
+        uploaded = client.post('/api/messages/uploads',headers=headers,files={'file':(name,content,mime)})
+        assert uploaded.status_code == 201
         upload = uploaded.json()
-        assert Path(tmp_path,upload['public_id']).read_bytes() == content
+        assert client.get(upload['file_url'], headers=headers).content == content
         sent = client.post('/api/messages',headers=headers,json={'conversation_id':conv['id'],'content':'','message_type':'IMAGE' if mime.startswith('image/') else 'FILE','attachments':[upload]})
         assert sent.status_code == 201
         assert sent.json()['attachments'][0]['file_name'] == name

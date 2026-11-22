@@ -48,8 +48,8 @@ async def process_reel(reel_id: int):
             video = next((s for s in info.get("streams", []) if s.get("codec_type") == "video"), None)
             duration = float(info.get("format", {}).get("duration") or (video or {}).get("duration") or 0)
             width, height = int((video or {}).get("width") or 0), int((video or {}).get("height") or 0)
-            if not video or not 1 <= duration <= 180 or not 1 <= width <= 3840 or not 1 <= height <= 3840:
-                raise ValueError("Reels must be 1–180 seconds and at most 3840px in either dimension")
+            if not video or not 1 <= duration < 60 or not 1 <= width <= 3840 or not 1 <= height <= 3840:
+                raise ValueError("Reels must be shorter than 60 seconds and at most 3840px in either dimension")
             ratio = min(1.0, 720 / width, 1280 / height)
             target_width = max(2, int(width * ratio) // 2 * 2)
             target_height = max(2, int(height * ratio) // 2 * 2)
@@ -70,7 +70,8 @@ async def process_reel(reel_id: int):
                 return
             reel.duration, reel.width, reel.height = duration, width, height
             reel.video_path, reel.thumbnail_path = str(output), str(thumb)
-            reel.status = "PUBLISHED" if reel.publish_requested else "READY"
+            schedule_due = not reel.scheduled_at or reel.scheduled_at.replace(tzinfo=timezone.utc) <= datetime.now(timezone.utc)
+            reel.status = "PUBLISHED" if reel.publish_requested and schedule_due else "READY"
             if reel.status == "PUBLISHED":
                 reel.published_at = datetime.now(timezone.utc)
             reel.error = None
@@ -120,8 +121,34 @@ async def run_reel_worker():
                 db.commit()
                 ids = [row[0] for row in db.query(Reel.id).filter(Reel.status == "PROCESSING")
                     .order_by(Reel.created_at).limit(4).all()]
+                scheduled = db.query(Reel).filter(Reel.status == "READY", Reel.publish_requested.is_(True),
+                    Reel.scheduled_at.isnot(None), Reel.scheduled_at <= datetime.now(timezone.utc),
+                    Reel.deleted_at.is_(None)).limit(20).all()
+                for reel in scheduled:
+                    reel.status = "PUBLISHED"
+                    reel.published_at = datetime.now(timezone.utc)
+                    reel.scheduled_at = None
+                db.commit()
+                scheduled_ids = [reel.id for reel in scheduled]
             for reel_id in ids:
                 await process_reel(reel_id)
+            for reel_id in scheduled_ids:
+                with SessionLocal() as db:
+                    reel = db.get(Reel, reel_id)
+                    if reel:
+                        try:
+                            from app.routes.social import notify
+                            from app.services.reel_service import get_visible
+                            for (user_id,) in db.query(ReelMention.user_id).filter_by(reel_id=reel.id):
+                                try:
+                                    get_visible(db, reel.public_id, user_id)
+                                except HTTPException:
+                                    continue
+                                await notify(db, user_id, reel.creator_id, "reel_mention", "reel", reel.id)
+                            await manager.send_to_user(reel.creator_id, {"event":"reel.ready",
+                                "data":{"public_id":reel.public_id,"status":reel.status}})
+                        except Exception:
+                            log.exception("Could not send scheduled Reel notifications for %s", reel_id)
         except asyncio.CancelledError:
             raise
         except Exception:

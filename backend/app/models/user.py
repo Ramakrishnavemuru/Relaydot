@@ -4,6 +4,9 @@ from sqlalchemy.orm import relationship
 from app.database import Base
 
 
+from app.security.secret_storage import AuthenticatorSecret
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -25,14 +28,19 @@ class User(Base):
     restricted_until = Column(DateTime, nullable=True)
 
     # 2FA
-    totp_secret = Column(String(64), nullable=True)
+    totp_secret = Column(AuthenticatorSecret(), nullable=True)
     totp_enabled = Column(Boolean, default=False, nullable=False)
+    staff_recovery_totp_step = Column(Integer, nullable=True)
 
     # Privacy settings
     show_last_seen = Column(Boolean, default=True)
     show_online = Column(Boolean, default=True)
     show_read_receipts = Column(Boolean, default=True)
     is_private = Column(Boolean, default=False, nullable=False)
+    account_type = Column(String(12), default="PERSONAL", nullable=False)
+    creator_category = Column(String(40), nullable=True)
+    creator_contact_enabled = Column(Boolean, default=False, nullable=False)
+    creator_enabled_at = Column(DateTime, nullable=True)
 
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
@@ -71,6 +79,9 @@ class User(Base):
             "show_online": self.show_online,
             "show_read_receipts": self.show_read_receipts,
             "is_private": bool(self.is_private),
+            "account_type": self.account_type or "PERSONAL",
+            "creator_category": self.creator_category if self.account_type == "CREATOR" else None,
+            "creator_contact_enabled": bool(self.creator_contact_enabled) if self.account_type == "CREATOR" else False,
             "created_at": self.created_at.isoformat() if self.created_at else None
         }
         if not include_sensitive:

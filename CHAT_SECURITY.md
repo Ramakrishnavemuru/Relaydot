@@ -1,0 +1,9 @@
+# Chat access and media
+
+Chat links use `?chat=<public_id>`, a random, stable 32-character identifier. The existing numeric IDs remain internal to the API and database joins. A legacy `?id=<number>` link is accepted only when that conversation appears in the signed-in user's authorized conversation list, then replaced in the browser URL. The opaque ID is for link hygiene; membership checks enforce access.
+
+New chat attachments use `POST /api/messages/uploads` and are stored in `CHAT_MEDIA_DIR`, which must be a private, persistent directory outside `UPLOAD_DIR`. The upload response contains an opaque URL under `/api/messages/attachments/`. A message may claim only an upload made by its sender. The GET route checks the current session, conversation membership, chat lock, and message deletion/expiry each time. Forwarding a message reuses the same private media object and grants access through the forwarded message's destination conversation.
+
+Existing local `/uploads/...` files used only by chat messages are also checked against current membership by the static-file handler. A legacy file also referenced by a post, story, or profile remains public to preserve that content; it cannot be made chat-private without migrating the other reference. Previously uploaded Cloudinary chat media retains its original public URL; those URLs cannot be revoked by this application alone. Migrate or revoke those assets in Cloudinary if past links must become private. Configure `CHAT_MEDIA_DIR` on a persistent shared volume for a multi-instance deployment; the default local directory is suitable for a single persistent host.
+
+The schema migration adds and backfills `conversations.public_id`, then creates a unique index. SQLAlchemy creates the new `chat_uploads` table. Existing conversation IDs, memberships, and messages are preserved.

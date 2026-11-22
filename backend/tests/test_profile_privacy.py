@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi.testclient import TestClient
+from conftest import BrowserTestClient as TestClient
 
 from app.main import app
 from app.models.reel import Reel

@@ -14,6 +14,10 @@ export type User = {
   mutuals_count?: number
   is_following?: boolean
   is_private?: boolean
+  account_type?: 'PERSONAL' | 'CREATOR'
+  creator_category?: string | null
+  creator_contact_enabled?: boolean
+  contact_email?: string | null
   account_state?: 'ACTIVE' | 'RESTRICTED' | 'BANNED' | null
 }
 
@@ -21,8 +25,10 @@ export type Page<T> = { items: T[]; next_offset: number | null }
 
 export type Post = {
   id: number
+  public_id: string
   author_id: number
   author: User
+  collaborators?: User[]
   content: string
   media_url?: string | null
   media_type?: 'IMAGE' | 'VIDEO' | 'GIF' | null
@@ -32,6 +38,11 @@ export type Post = {
   reposts_count: number
   my_reaction?: string | null
   bookmarked: boolean
+  pinned?: boolean
+  profile_pinned_at?: string | null
+  community_id?: number | null
+  repost_of_id?: number | null
+  thread_parent_id?: number | null
   original?: Post | null
   poll?: { id: number; label: string; votes?: number | null }[]
   my_vote?: number | null
@@ -40,6 +51,7 @@ export type Post = {
 
 export type Conversation = {
   id: number
+  public_id: string
   type: 'DIRECT' | 'GROUP'
   name?: string | null
   avatar_url?: string | null
@@ -83,6 +95,7 @@ export type Message = {
 export type StoryGroup = { user_id: number; username?: string; display_name?: string; avatar_url?: string | null; all_viewed?: boolean; stories: { id: number }[] }
 
 export type Reel = {
+  id: number
   public_id: string
   creator_id: number
   creator: User
@@ -91,17 +104,38 @@ export type Reel = {
   publish_requested?: boolean | null
   error?: string | null
   video_url?: string | null
+  download_url?: string | null
   thumbnail_url?: string | null
-  likes_count: number
+  likes_count: number | null
   comments_count: number
   views_count: number
+  duration?: number | null
+  published_at?: string | null
+  following?: boolean
+  shares_count?: number | null
   liked: boolean
   bookmarked: boolean
   visibility?: string
   allow_comments?: boolean
   allow_download?: boolean
+  location?: string | null
+  scheduled_at?: string | null
+  hide_like_count?: boolean
+  hide_share_count?: boolean
+  show_on_main_grid?: boolean
+  pinned?: boolean
+  pinned_at?: string | null
+  partnership_label?: boolean
+  partnership_partner?: string | null
+  cover_crop_x?: number
+  cover_crop_y?: number
+  cover_zoom?: number
+  poll?: { id: number; label: string; votes?: number }[]
+  poll_total?: number | null
+  my_poll_vote?: number | null
+  hashtags?: string[]
 }
 
-export type Notification = { id: number; type: string; actor?: User | null; entity_type: string; entity_id: number; read: boolean; created_at: string }
+export type Notification = { id: number; type: string; actor?: User | null; entity_type: string; entity_id: number; post_public_id?: string | null; reel_public_id?: string | null; conversation_public_id?: string | null; post_preview?: string | null; invitation_status?: string | null; read: boolean; created_at: string }
 
 export type SearchResult = { people: User[]; posts: Post[]; communities: { id: number; name: string; description: string; member_count: number }[]; topics: { name: string; posts: number }[] }

@@ -46,6 +46,7 @@ class ConversationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    public_id: str
     type: str  # DIRECT or GROUP
     name: Optional[str] = None
     avatar_url: Optional[str] = None

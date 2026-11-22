@@ -54,6 +54,8 @@ class ConnectionManager:
             self._socket_sessions.pop(websocket, None)
             if len(self.active_connections[user_id]) == 0:
                 del self.active_connections[user_id]
+                from app.websocket.signaling import CallSignalingHandler
+                await CallSignalingHandler.disconnected(user_id)
                 # User is completely offline
                 user = db.query(User).filter(User.id == user_id).first()
                 if user:

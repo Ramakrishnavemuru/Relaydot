@@ -1,0 +1,23 @@
+# Replace TURN_HOST, PUBLIC_IPV4, and the secret. Never commit a real secret.
+# See DEPLOYMENT.md for installation, TLS, NAT, and firewall instructions.
+listening-port=3478
+tls-listening-port=5349
+fingerprint
+use-auth-secret
+static-auth-secret=REPLACE_WITH_A_RANDOM_32_BYTE_OR_LONGER_SECRET
+realm=TURN_HOST
+server-name=TURN_HOST
+cert=/etc/letsencrypt/live/TURN_HOST/fullchain.pem
+pkey=/etc/letsencrypt/live/TURN_HOST/privkey.pem
+min-port=49160
+max-port=49260
+user-quota=4
+total-quota=200
+max-bps=1500000
+no-loopback-peers
+no-multicast-peers
+# On a VPS with a directly assigned public address, leave these commented.
+# If behind a 1:1 NAT, bind the private address and map it to the public address:
+# listening-ip=PRIVATE_IPV4
+# relay-ip=PRIVATE_IPV4
+# external-ip=PUBLIC_IPV4/PRIVATE_IPV4

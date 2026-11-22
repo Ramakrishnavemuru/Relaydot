@@ -1,5 +1,5 @@
 """Social integration: persisted data, privacy, ownership and chat reuse."""
-from fastapi.testclient import TestClient
+from conftest import BrowserTestClient as TestClient
 from app.main import app
 
 
@@ -73,9 +73,115 @@ def test_interactions_poll_notifications_and_chat_sharing():
     conv = client.post('/api/conversations/direct', headers=bh, json={'recipient_id':a}).json()
     share = api(client, 'POST', f'/posts/{pid}/share-to-chat', bh, {'conversation_id':conv['id']})
     assert share.status_code == 200, share.text
-    assert f'/post/{pid}' in share.json()['content']
+    assert f"/app/posts/{created.json()['public_id']}" in share.json()['content']
     assert any(n['type'] == 'message' for n in api(client, 'GET', '/notifications', ah).json()['items'])
     assert api(client, 'GET', '/trending', bh).status_code == 200
+
+
+def test_idempotent_offline_post_and_collaboration_lifecycle():
+    client = TestClient(app)
+    owner, oh = account(client, 'collab_owner')
+    friend, fh = account(client, 'collab_friend')
+    third, th = account(client, 'collab_third')
+    key = '12345678-1234-4234-8234-123456789abc'
+    payload = {'content': 'One shared post', 'client_id': key, 'collaborator_ids': [friend]}
+    first = api(client, 'POST', '/posts', oh, payload)
+    assert first.status_code == 201, first.text
+    pid = first.json()['id']
+    assert api(client, 'POST', '/posts', oh, payload).json()['id'] == pid
+    assert api(client, 'POST', '/posts', oh, {**payload, 'content': 'Changed'}).status_code == 409
+    assert api(client, 'POST', '/posts', th, {**payload, 'collaborator_ids': []}).json()['id'] != pid
+    assert api(client, 'GET', f'/profiles/{friend}/posts', fh).json()['items'] == []
+    assert api(client, 'GET', '/collaborations/invitations', fh).json()['items'][0]['post_id'] == pid
+    assert api(client, 'GET', f'/collaborations/invitations/{pid}', th).status_code == 404
+    assert api(client, 'POST', f'/posts/{pid}/collaborators/respond?accept=true', th).status_code == 404
+    assert api(client, 'POST', f'/posts/{pid}/collaborators/respond?accept=true', fh).status_code == 200
+    shared = api(client, 'GET', f'/profiles/{friend}/posts', fh).json()['items']
+    assert [item['id'] for item in shared] == [pid]
+    assert shared[0]['collaborators'][0]['id'] == friend
+    assert api(client, 'POST', f'/profiles/{owner}/follow', th).status_code == 200
+    assert api(client, 'POST', f'/profiles/{friend}/follow', th).status_code == 200
+    assert [p['id'] for p in api(client, 'GET', '/feed?mode=following', th).json()['items']].count(pid) == 1
+    assert api(client, 'PATCH', f'/posts/{pid}', fh, {'content': 'No'}).status_code == 403
+    assert api(client, 'DELETE', f'/posts/{pid}', fh).status_code == 403
+    assert api(client, 'POST', f'/posts/{pid}/reaction', th, {'emoji': '❤️'}).json()['likes_count'] == 1
+    assert api(client, 'GET', f'/profiles/{friend}/posts', fh).json()['items'][0]['likes_count'] == 1
+    assert api(client, 'DELETE', f'/posts/{pid}/collaborators/{friend}', th).status_code == 403
+    assert api(client, 'DELETE', f'/posts/{pid}/collaborators/{friend}', fh).status_code == 200
+    assert api(client, 'GET', f'/profiles/{friend}/posts', fh).json()['items'] == []
+    assert api(client, 'POST', f'/posts/{pid}/collaborators/{friend}', oh).status_code == 200
+    assert api(client, 'POST', f'/posts/{pid}/collaborators/respond?accept=false', fh).status_code == 200
+    assert api(client, 'POST', f'/posts/{pid}/collaborators/{friend}', oh).status_code == 200
+    assert api(client, 'DELETE', f'/posts/{pid}/collaborators/{friend}', oh).status_code == 200
+    assert api(client, 'POST', f'/posts/{pid}/collaborators/respond?accept=true', fh).status_code == 404
+    assert api(client, 'DELETE', f'/posts/{pid}', oh).status_code == 200
+    assert api(client, 'GET', f'/posts/{pid}', oh).status_code == 404
+
+
+def test_offline_media_key_validation_and_invitation_atomicity(tmp_path, monkeypatch):
+    from app.routes import post_media
+    monkeypatch.setattr(post_media, 'POST_MEDIA_DIR', tmp_path)
+    client = TestClient(app)
+    owner, oh = account(client, 'offline_owner')
+    friend, fh = account(client, 'offline_friend')
+    key = '87654321-1234-4234-8234-123456789abc'
+    uploaded = client.post('/api/social/post-media', headers=oh,
+        files={'file': ('offline.png', b'\x89PNG\r\n\x1a\nexample', 'image/png')})
+    assert uploaded.status_code == 201, uploaded.text
+    media = {'content': 'Offline photo', 'media_url': uploaded.json()['file_url'],
+             'media_type': 'IMAGE', 'client_id': key, 'collaborator_ids': [friend]}
+    assert api(client, 'POST', '/posts', {}, media).status_code != 201
+    assert api(client, 'POST', '/posts', oh, {**media, 'media_url': '/uploads/unsafe.svg'}).status_code == 400
+    assert api(client, 'POST', '/posts', oh, {**media, 'collaborator_ids': [999999]}).status_code == 404
+    assert api(client, 'GET', '/collaborations/invitations', fh).json()['items'] == []
+    first = api(client, 'POST', '/posts', oh, media)
+    assert first.status_code == 201, first.text
+    assert first.json()['media_url'] == uploaded.json()['file_url']
+    assert api(client, 'POST', '/posts', oh, media).json()['id'] == first.json()['id']
+    assert len(api(client, 'GET', '/collaborations/invitations', fh).json()['items']) == 1
+
+
+def test_post_idempotency_schema_migrates_existing_sqlite(monkeypatch):
+    from sqlalchemy import create_engine, inspect
+    from app import main
+    engine = create_engine('sqlite:///:memory:')
+    with engine.begin() as conn:
+        conn.exec_driver_sql('CREATE TABLE posts (id INTEGER PRIMARY KEY, author_id INTEGER NOT NULL)')
+        conn.exec_driver_sql('INSERT INTO posts (id, author_id) VALUES (2, 1)')
+    monkeypatch.setattr(main, 'engine', engine)
+    main.run_schema_migrations()
+    with engine.begin() as conn:
+        old_public_id = conn.exec_driver_sql('SELECT public_id FROM posts WHERE id = 2').scalar()
+    main.run_schema_migrations()
+    with engine.begin() as conn:
+        assert conn.exec_driver_sql('SELECT public_id FROM posts WHERE id = 2').scalar() == old_public_id
+    assert old_public_id and len(old_public_id) == 32
+    columns = {column['name'] for column in inspect(engine).get_columns('posts')}
+    assert {'client_id', 'request_fingerprint', 'public_id'} <= columns
+    with engine.begin() as conn:
+        conn.exec_driver_sql("INSERT INTO posts (author_id, client_id) VALUES (1, 'same')")
+        import pytest
+        with pytest.raises(Exception):
+            conn.exec_driver_sql("INSERT INTO posts (author_id, client_id) VALUES (1, 'same')")
+
+
+def test_private_creator_collaboration_stays_private():
+    client = TestClient(app)
+    owner, oh = account(client, 'private_collab_owner')
+    friend, fh = account(client, 'private_collab_friend')
+    _, th = account(client, 'private_collab_viewer')
+    from conftest import TestingSessionLocal
+    from app.models.user import User
+    with TestingSessionLocal() as db:
+        db.get(User, owner).is_private = True
+        db.commit()
+    created = api(client, 'POST', '/posts', oh, {'content': 'Private shared', 'collaborator_ids': [friend]})
+    assert created.status_code == 201, created.text
+    pid = created.json()['id']
+    assert api(client, 'POST', f'/posts/{pid}/collaborators/respond?accept=true', fh).status_code == 200
+    assert api(client, 'GET', f'/posts/{pid}', fh).status_code == 200
+    assert api(client, 'GET', f'/posts/{pid}', th).status_code == 404
+    assert api(client, 'GET', f'/profiles/{friend}/posts', th).json()['items'] == []
 
 
 def test_hashtag_totals_are_visible_and_trending_keeps_all_time_count():

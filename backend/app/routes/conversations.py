@@ -161,6 +161,7 @@ def start_direct_conversation(
             return c
     return {
         "id": conv.id,
+        "public_id": conv.public_id,
         "type": conv.type,
         "created_at": conv.created_at.isoformat(),
         "members": []

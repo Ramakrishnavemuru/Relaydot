@@ -1,8 +1,12 @@
 """REST API for the social layer; chat and stories retain their existing routes."""
 import re
+import hashlib
+import json
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import and_, case, func, or_
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -12,11 +16,13 @@ from app.models.block import BlockedUser
 from app.models.conversation import Conversation, ConversationMember
 from app.models.message import Message
 from app.models.social import (Bookmark, Comment, CommentReaction, Community, CommunityMember,
-    Follow, Hashtag, PollOption, PollVote, Post, PostHashtag, PostMention,
+    Follow, Hashtag, PollOption, PollVote, Post, PostCollaborator, PostHashtag, PostMention,
     PostReaction, Report, SocialNotification)
 from app.models.staff import StaffNotification
 from app.models.story import Story
 from app.models.reel import Reel
+from app.models.post_media import PostMedia
+from app.routes.post_media import media_id, validate_reference
 from app.services.story_service import StoryService
 from app.schemas.social import (CommentCreate, CommunityCreate, CommunityEdit, MemberRole,
     NotificationRead, PostCreate, PostEdit, ReactionCreate, ReportCreate, ShareCreate, VoteCreate)
@@ -26,6 +32,7 @@ from app.services.reel_service import visible_query as visible_reels
 from app.services.message_service import MessageService
 from app.services.user_service import UserService
 from app.services.rate_limit import throttle
+from app.services.creator_events import record as record_creator_event
 from app.websocket.manager import manager
 
 router = APIRouter(prefix="/social", tags=["Social"])
@@ -57,6 +64,8 @@ def community_or_404(db: Session, community_id: int) -> Community:
 
 
 def media_url_valid(url: str, media_type: str) -> bool:
+    if media_id(url):
+        return True
     parsed = urlparse(url)
     extension = parsed.path.rsplit(".", 1)[-1].lower()
     allowed = {"IMAGE": {"png", "jpg", "jpeg", "webp"},
@@ -83,16 +92,30 @@ async def notify(db: Session, recipient_id: int, actor_id: int, kind: str, entit
         type=kind, entity_type=entity_type, entity_id=entity_id)
     db.add(item)
     db.commit()
+    await broadcast_notification(db, item)
+
+
+async def broadcast_notification(db: Session, item: SocialNotification):
     from app.services.settings_service import alert_allowed
-    payload = notification_dict(item)
-    payload["alert"] = alert_allowed(db, recipient_id, "story" if "story" in kind else "social")
-    await manager.send_to_user(recipient_id, {"event": "social_notification", "data": payload})
+    payload = notification_dict(item, db)
+    payload["alert"] = alert_allowed(db, item.recipient_id, "story" if "story" in item.type else "social")
+    await manager.send_to_user(item.recipient_id, {"event": "social_notification", "data": payload})
 
 
-def notification_dict(item: SocialNotification) -> dict:
+def notification_dict(item: SocialNotification, db: Session | None = None) -> dict:
     actor = item.actor
+    post = db.get(Post, item.entity_id) if db and item.entity_type == "post" else None
+    reel = db.get(Reel, item.entity_id) if db and item.entity_type == "reel" else None
+    conversation = db.get(Conversation, item.entity_id) if db and item.entity_type == "conversation" and db.query(ConversationMember.id).filter_by(conversation_id=item.entity_id, user_id=item.recipient_id).first() else None
+    invited_post = db.get(Post, item.entity_id) if db and item.type == "collaboration_invite" else None
+    invitation = db.query(PostCollaborator).filter_by(post_id=item.entity_id, user_id=item.recipient_id).first() if invited_post else None
     return {"id": item.id, "type": item.type, "entity_type": item.entity_type,
         "entity_id": item.entity_id, "read": item.read,
+        "post_preview": invited_post.content[:180] if invited_post and not invited_post.deleted_at else None,
+        "invitation_status": invitation.status if invitation and not invited_post.deleted_at else None,
+        "post_public_id": post.public_id if post and not post.deleted_at else None,
+        "reel_public_id": reel.public_id if reel and not reel.deleted_at else None,
+        "conversation_public_id": conversation.public_id if conversation else None,
         "created_at": FeedService.iso(item.created_at),
         "actor": actor.to_dict(False) if actor else None}
 
@@ -121,11 +144,23 @@ async def index_text(db: Session, post: Post, actor_id: int):
 
 @router.post("/posts", status_code=201)
 async def create_post(data: PostCreate, current: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    fingerprint = hashlib.sha256(json.dumps(data.model_dump(exclude={"client_id"}), sort_keys=True).encode()).hexdigest()
+    if data.client_id:
+        existing = db.query(Post).filter_by(author_id=current.id, client_id=data.client_id).first()
+        if existing:
+            if existing.deleted_at:
+                raise HTTPException(409, "This post key belongs to a deleted post")
+            if existing.request_fingerprint != fingerprint:
+                raise HTTPException(409, "This post key was already used for different content")
+            return FeedService.serialize(db, existing, current.id)
     throttle(current.id, "post", 12)
     if not data.content.strip() and not data.media_url and not data.quote_of_id and not data.poll_options:
         raise HTTPException(400, "Add text, media, a quote, or a poll")
     if bool(data.media_url) != bool(data.media_type) or (data.media_url and not media_url_valid(data.media_url, data.media_type)):
         raise HTTPException(400, "Unsupported media. Upload an image or video first.")
+    if data.media_url and not media_id(data.media_url):
+        raise HTTPException(400, "Upload post media through the private post uploader")
+    private_media = validate_reference(db, current.id, data.media_url, data.media_type) if data.media_url else None
     if data.community_id and not member(db, data.community_id, current.id):
         raise HTTPException(403, "Join the community before posting")
     if data.quote_of_id:
@@ -136,16 +171,44 @@ async def create_post(data: PostCreate, current: User = Depends(get_current_user
         parent = post_or_404(db, data.thread_parent_id, current.id)
         if parent.author_id != current.id:
             raise HTTPException(403, "You can only extend your own thread")
+    if len(set(data.collaborator_ids)) != len(data.collaborator_ids) or current.id in data.collaborator_ids:
+        raise HTTPException(400, "Choose unique collaborators other than yourself")
+    for user_id in data.collaborator_ids:
+        user_or_404(db, user_id, current.id)
     post = Post(author_id=current.id, content=data.content.strip(), media_url=data.media_url,
         media_type=data.media_type, visibility=data.visibility, reply_policy=data.reply_policy,
         community_id=data.community_id, quote_of_id=data.quote_of_id,
-        thread_parent_id=data.thread_parent_id)
+        thread_parent_id=data.thread_parent_id, client_id=data.client_id,
+        request_fingerprint=fingerprint if data.client_id else None)
     db.add(post)
-    db.flush()
-    for position, label in enumerate(data.poll_options or []):
-        db.add(PollOption(post_id=post.id, label=label.strip(), position=position))
-    db.commit()
+    invitation_notifications = []
+    try:
+        db.flush()
+        if private_media:
+            claimed = db.query(PostMedia).filter_by(id=private_media.id, owner_id=current.id,
+                post_id=None).update({"post_id": post.id}, synchronize_session="fetch")
+            if claimed != 1:
+                db.rollback()
+                raise HTTPException(409, "Post media was already used")
+        for position, label in enumerate(data.poll_options or []):
+            db.add(PollOption(post_id=post.id, label=label.strip(), position=position))
+        for user_id in data.collaborator_ids:
+            db.add(PostCollaborator(post_id=post.id, user_id=user_id, invited_by=current.id))
+            item = SocialNotification(recipient_id=user_id, actor_id=current.id,
+                type="collaboration_invite", entity_type="post", entity_id=post.id)
+            db.add(item)
+            invitation_notifications.append(item)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        if data.client_id:
+            existing = db.query(Post).filter_by(author_id=current.id, client_id=data.client_id).first()
+            if existing and existing.request_fingerprint == fingerprint:
+                return FeedService.serialize(db, existing, current.id)
+        raise HTTPException(409, "Post could not be created")
     await index_text(db, post, current.id)
+    for item in invitation_notifications:
+        await broadcast_notification(db, item)
     if data.quote_of_id:
         original = db.get(Post, data.quote_of_id)
         await notify(db, original.author_id, current.id, "quote", "post", post.id)
@@ -154,6 +217,103 @@ async def create_post(data: PostCreate, current: User = Depends(get_current_user
         for recipient_id in member_ids:
             await notify(db, recipient_id, current.id, "community_post", "post", post.id)
     return FeedService.serialize(db, post, current.id)
+
+
+def collaboration_dict(row: PostCollaborator) -> dict:
+    return {"id": row.id, "post_id": row.post_id, "user_id": row.user_id,
+        "user": row.user.to_dict(False) if row.user else None, "status": row.status,
+        "invited_at": FeedService.iso(row.invited_at),
+        "responded_at": FeedService.iso(row.responded_at) if row.responded_at else None}
+
+
+@router.get("/collaborations/invitations")
+def my_collaboration_invitations(current: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    rows = db.query(PostCollaborator).join(Post, Post.id == PostCollaborator.post_id).filter(
+        PostCollaborator.user_id == current.id, PostCollaborator.status == "PENDING",
+        Post.deleted_at.is_(None)).order_by(PostCollaborator.invited_at.desc()).all()
+    return {"items": [{**collaboration_dict(row), "creator": row.post.author.to_dict(False),
+        "post_preview": row.post.content[:180]} for row in rows]}
+
+
+@router.get("/collaborations/invitations/{post_id}")
+def review_collaboration_invitation(post_id: int, current: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    row = db.query(PostCollaborator).filter_by(post_id=post_id, user_id=current.id, status="PENDING").first()
+    if not row or not row.post or row.post.deleted_at:
+        raise HTTPException(404, "Pending invitation not found")
+    return {"invitation": collaboration_dict(row), "post": FeedService.serialize(db, row.post, current.id)}
+
+
+@router.get("/posts/{post_id}/collaborators")
+def list_post_collaborators(post_id: int, current: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    post = post_or_404(db, post_id, current.id)
+    rows = db.query(PostCollaborator).filter_by(post_id=post.id).order_by(PostCollaborator.id).all()
+    return {"items": [collaboration_dict(row) for row in rows if row.status == "ACCEPTED" or
+        current.id in (post.author_id, row.user_id)]}
+
+
+@router.post("/posts/{post_id}/collaborators/respond")
+def respond_collaboration(post_id: int, accept: bool,
+                          current: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    row = db.query(PostCollaborator).filter_by(post_id=post_id, user_id=current.id).first()
+    post = db.get(Post, post_id)
+    if not row or not post or post.deleted_at or row.status != "PENDING":
+        raise HTTPException(404, "Pending invitation not found")
+    if UserService.is_blocked(db, current.id, post.author_id):
+        raise HTTPException(403, "Invitation unavailable")
+    row.status = "ACCEPTED" if accept else "DECLINED"
+    row.responded_at = datetime.now(timezone.utc)
+    db.commit()
+    return collaboration_dict(row)
+
+
+@router.post("/posts/{post_id}/collaborators/{user_id}")
+async def invite_collaborator(post_id: int, user_id: int,
+                              current: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    throttle(current.id, "collaboration_invite", 30, 3600)
+    post = post_or_404(db, post_id, current.id)
+    if post.author_id != current.id or post.repost_of_id:
+        raise HTTPException(403, "Only the original creator can invite collaborators")
+    if user_id == current.id:
+        raise HTTPException(400, "You cannot invite yourself")
+    user_or_404(db, user_id, current.id)
+    row = db.query(PostCollaborator).filter_by(post_id=post_id, user_id=user_id).first()
+    if row and row.status in ("PENDING", "ACCEPTED"):
+        return collaboration_dict(row)
+    if row:
+        row.status = "PENDING"
+        row.invited_at = datetime.now(timezone.utc)
+        row.responded_at = None
+    else:
+        row = PostCollaborator(post_id=post_id, user_id=user_id, invited_by=current.id)
+        db.add(row)
+    item = SocialNotification(recipient_id=user_id, actor_id=current.id,
+        type="collaboration_invite", entity_type="post", entity_id=post_id)
+    db.add(item)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        row = db.query(PostCollaborator).filter_by(post_id=post_id, user_id=user_id).first()
+        if not row:
+            raise HTTPException(409, "Invitation could not be created")
+        return collaboration_dict(row)
+    await broadcast_notification(db, item)
+    return collaboration_dict(row)
+
+
+@router.delete("/posts/{post_id}/collaborators/{user_id}")
+def remove_collaborator(post_id: int, user_id: int,
+                        current: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    post = db.get(Post, post_id)
+    row = db.query(PostCollaborator).filter_by(post_id=post_id, user_id=user_id).first()
+    if not post or post.deleted_at or not row:
+        raise HTTPException(404, "Collaboration not found")
+    if current.id not in (post.author_id, user_id):
+        raise HTTPException(403, "You cannot change this collaboration")
+    row.status = "REVOKED"
+    row.responded_at = datetime.now(timezone.utc)
+    db.commit()
+    return collaboration_dict(row)
 
 
 @router.get("/feed")
@@ -167,6 +327,15 @@ def feed(mode: str = Query("for_you", pattern="^(for_you|following)$"), limit: i
 @router.get("/posts/{post_id}")
 def get_post(post_id: int, current: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return FeedService.serialize(db, post_or_404(db, post_id, current.id), current.id)
+
+
+@router.get("/posts/public/{public_id}")
+def get_post_by_public_id(public_id: str, current: User = Depends(get_current_user),
+                          db: Session = Depends(get_db)):
+    post = db.query(Post).filter_by(public_id=public_id).first()
+    if not post or not FeedService.can_view(db, post, current.id):
+        raise HTTPException(404, "Post unavailable")
+    return FeedService.serialize(db, post, current.id)
 
 
 @router.patch("/posts/{post_id}")
@@ -195,6 +364,36 @@ def delete_post(post_id: int, current: User = Depends(get_current_user), db: Ses
     post.deleted_at = datetime.now(timezone.utc)
     db.commit()
     return {"deleted": True}
+
+
+@router.post("/posts/{post_id}/profile-pin")
+def pin_profile_post(post_id: int, current: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    post = post_or_404(db, post_id, current.id)
+    if post.author_id != current.id or post.repost_of_id or post.thread_parent_id:
+        raise HTTPException(403, "Only your original profile posts can be pinned")
+    if current.account_type != "CREATOR":
+        raise HTTPException(403, "Creator Account required")
+    if not post.profile_pinned_at:
+        db.query(User.id).filter(User.id == current.id).with_for_update().first()
+        post_count = db.query(func.count(Post.id)).filter(Post.author_id == current.id,
+            Post.deleted_at.is_(None), Post.profile_pinned_at.isnot(None)).scalar() or 0
+        reel_count = db.query(func.count(Reel.id)).filter(Reel.creator_id == current.id,
+            Reel.status == "PUBLISHED", Reel.deleted_at.is_(None), Reel.pinned_at.isnot(None)).scalar() or 0
+        if post_count + reel_count >= 3:
+            raise HTTPException(409, "You can pin up to three profile items")
+        post.profile_pinned_at = datetime.now(timezone.utc)
+        db.commit()
+    return FeedService.serialize(db, post, current.id)
+
+
+@router.delete("/posts/{post_id}/profile-pin")
+def unpin_profile_post(post_id: int, current: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    post = post_or_404(db, post_id, current.id)
+    if post.author_id != current.id:
+        raise HTTPException(403, "Only the post owner can unpin it")
+    post.profile_pinned_at = None
+    db.commit()
+    return FeedService.serialize(db, post, current.id)
 
 
 @router.post("/posts/{post_id}/reaction")
@@ -360,14 +559,16 @@ async def share_to_chat(post_id: int, data: ShareCreate, current: User = Depends
     post = post_or_404(db, post_id, current.id)
     members = db.query(ConversationMember).filter_by(conversation_id=data.conversation_id).all()
     if not any(m.user_id == current.id for m in members):
-        raise HTTPException(403, "Not a conversation member")
+        raise HTTPException(404, "Conversation not found")
     for m in members:
         if not FeedService.can_view(db, post, m.user_id):
             raise HTTPException(403, "Some recipients cannot view this post")
     preview = post.content[:130].replace("\n", " ") or ("Media post" if post.media_url else "Post")
-    content = f"Shared post by {post.author.display_name or post.author.username}\n{preview}\n/post/{post.id}"
-    return await MessageService.send_message(db, current.id,
+    content = f"Shared post by {post.author.display_name or post.author.username}\n{preview}\n/app/posts/{post.public_id}"
+    result = await MessageService.send_message(db, current.id,
         MessageCreate(conversation_id=data.conversation_id, content=content, message_type="TEXT"))
+    record_creator_event(db, post.author_id, current.id, "POST_SHARE", "POST", post.id)
+    return result
 
 
 @router.get("/posts/{post_id}/thread")
@@ -382,10 +583,12 @@ def thread(post_id: int, current: User = Depends(get_current_user), db: Session 
 def profile_dict(db: Session, user: User, viewer_id: int) -> dict:
     data = user.to_dict(False)
     hidden = bool(user.is_private and user.id != viewer_id)
-    posts_count = 0 if hidden else FeedService.visible_query(db, viewer_id).filter(Post.author_id == user.id).count()
+    accepted = db.query(PostCollaborator.post_id).filter_by(user_id=user.id, status="ACCEPTED")
+    posts_count = 0 if hidden else FeedService.visible_query(db, viewer_id).filter(or_(Post.author_id == user.id, Post.id.in_(accepted))).count()
     reels_count = 0 if hidden else visible_reels(db, viewer_id).filter(Reel.creator_id == user.id).count()
     following_ids = db.query(Follow.following_id).filter(Follow.follower_id == viewer_id)
     data.update({"cover_url": user.cover_url, "website": user.website,
+        "contact_email": user.email if user.account_type == "CREATOR" and user.creator_contact_enabled and not hidden else None,
         "posts_count": posts_count + reels_count, "reels_count": reels_count,
         "followers_count": 0 if hidden else db.query(func.count(Follow.id)).filter_by(following_id=user.id).scalar() or 0,
         "following_count": 0 if hidden else db.query(func.count(Follow.id)).filter_by(follower_id=user.id).scalar() or 0,
@@ -416,31 +619,52 @@ def profile_posts(user_id: int, tab: str = Query("posts", pattern="^(posts|repli
             "post": FeedService.serialize(db, db.get(Post, c.post_id), current.id)}
             for c in comments]
     else:
-        q = FeedService.visible_query(db, current.id).filter(Post.author_id == user_id)
+        accepted = db.query(PostCollaborator.post_id).filter_by(user_id=user_id, status="ACCEPTED")
+        q = FeedService.visible_query(db, current.id).filter(or_(Post.author_id == user_id, Post.id.in_(accepted)))
         if tab == "media":
             q = q.filter(Post.media_url.isnot(None))
-        rows = q.order_by(Post.created_at.desc()).offset(offset).limit(limit).all()
+        rows = q.order_by(Post.profile_pinned_at.desc(), Post.created_at.desc()).offset(offset).limit(limit).all()
         items = FeedService.serialize_many(db, rows, current.id)
     return {"items": items, "next_offset": offset + len(items) if len(items) == limit else None}
 
 
 @router.post("/profiles/{user_id}/follow")
-async def follow(user_id: int, current: User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def follow(user_id: int, source_kind: Literal["POST", "REEL"] | None = None,
+                 source_id: int | None = Query(None, ge=1),
+                 current: User = Depends(get_current_user), db: Session = Depends(get_db)):
     throttle(current.id, "follow", 40)
     if user_id == current.id:
         raise HTTPException(400, "You cannot follow yourself")
     target = user_or_404(db, user_id, current.id)
     if target.is_private:
         raise HTTPException(403, "This account is private")
+    if source_kind or source_id:
+        if not source_kind or not source_id:
+            raise HTTPException(400, "Choose a valid follow source")
+        if source_kind == "POST":
+            source = db.get(Post, source_id)
+            if not source or source.author_id != user_id or not FeedService.can_view(db, source, current.id):
+                raise HTTPException(404, "Post not found")
+        else:
+            from app.models.reel import Reel
+            from app.services.reel_service import get_visible
+            source = db.get(Reel, source_id)
+            if not source or source.creator_id != user_id or get_visible(db, source.public_id, current.id).status != "PUBLISHED":
+                raise HTTPException(404, "Reel not found")
     if not db.query(Follow).filter_by(follower_id=current.id, following_id=user_id).first():
         db.add(Follow(follower_id=current.id, following_id=user_id)); db.commit()
+        record_creator_event(db, user_id, current.id, "FOLLOW_GAIN")
+        if source_kind and source_id:
+            record_creator_event(db, user_id, current.id, "FOLLOW_ATTRIBUTED", source_kind, source_id)
         await notify(db, user_id, current.id, "follow", "user", current.id)
     return {"following": True}
 
 
 @router.delete("/profiles/{user_id}/follow")
 def unfollow(user_id: int, current: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    db.query(Follow).filter_by(follower_id=current.id, following_id=user_id).delete(); db.commit()
+    deleted = db.query(Follow).filter_by(follower_id=current.id, following_id=user_id).delete(); db.commit()
+    if deleted:
+        record_creator_event(db, user_id, current.id, "FOLLOW_LOSS")
     return {"following": False}
 
 
@@ -565,7 +789,7 @@ def notifications(limit: int = Query(25, ge=1, le=50), offset: int = Query(0, ge
                   current: User = Depends(get_current_user), db: Session = Depends(get_db)):
     rows = db.query(SocialNotification).filter_by(recipient_id=current.id).order_by(
         SocialNotification.created_at.desc(), SocialNotification.id.desc()).offset(offset).limit(limit).all()
-    return {"items": [notification_dict(n) for n in rows],
+    return {"items": [notification_dict(n, db) for n in rows],
         "unread": db.query(func.count(SocialNotification.id)).filter_by(recipient_id=current.id, read=False).scalar() or 0,
         "next_offset": offset + len(rows) if len(rows) == limit else None}
 
@@ -614,10 +838,12 @@ def report(data: ReportCreate, current: User = Depends(get_current_user), db: Se
 
 def community_dict(db: Session, community: Community, viewer_id: int) -> dict:
     membership = member(db, community.id, viewer_id)
+    conversation = db.get(Conversation, community.conversation_id) if membership else None
     return {"id": community.id, "name": community.name,
         "description": community.description, "avatar_url": community.avatar_url,
         "banner_url": community.banner_url, "owner_id": community.owner_id,
         "conversation_id": community.conversation_id if membership else None,
+        "conversation_public_id": conversation.public_id if conversation else None,
         "member_count": db.query(func.count(CommunityMember.id)).filter_by(community_id=community.id).scalar() or 0,
         "my_role": membership.role if membership else None,
         "created_at": FeedService.iso(community.created_at)}

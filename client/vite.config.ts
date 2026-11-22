@@ -5,6 +5,8 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   base: '/app/',
   plugins: [react(), tailwindcss()],
+  // Active tabs may still reference chunks from the preceding release.
+  build: { emptyOutDir: false },
   server: {
     port: 5173,
     proxy: {

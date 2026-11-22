@@ -1,6 +1,7 @@
 """Dedicated short-video API using the existing identity, social graph and messaging systems."""
 import uuid
 import os
+import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Literal
@@ -13,8 +14,8 @@ from app.database import get_db
 from app.models.user import User
 from app.models.conversation import ConversationMember
 from app.models.reel import (Reel, ReelLike, ReelBookmark, ReelComment,
-    ReelCommentLike, ReelView, ReelShare, ReelMention)
-from app.models.social import Report
+    ReelCommentLike, ReelView, ReelShare, ReelMention, ReelPollOption, ReelPollVote)
+from app.models.social import Post, Report
 from app.schemas.message import MessageCreate
 from app.security.dependencies import get_current_user
 from app.services.message_service import MessageService
@@ -26,8 +27,15 @@ from app.services.reel_service import (feed, get_visible, index_caption, seriali
 from app.utils.helpers import sanitize_text
 
 router = APIRouter(prefix="/reels", tags=["Reels"])
+
+
+def published_reel(db: Session, public_id: str, viewer_id: int) -> Reel:
+    reel = get_visible(db, public_id, viewer_id)
+    if reel.status != "PUBLISHED":
+        raise HTTPException(404, "Reel not found")
+    return reel
 Visibility = Literal["EVERYONE", "FOLLOWERS", "FRIENDS", "ONLY_ME"]
-MAX_BYTES = 60 * 1024 * 1024
+MAX_BYTES = 50 * 1024 * 1024
 
 
 class ReelEdit(BaseModel):
@@ -35,8 +43,19 @@ class ReelEdit(BaseModel):
     visibility: Visibility | None = None
     allow_comments: bool | None = None
     allow_download: bool | None = None
+    location: str | None = Field(default=None, max_length=120)
+    hide_like_count: bool | None = None
+    hide_share_count: bool | None = None
+    scheduled_at: datetime | None = None
     publish: bool = False
     archive: bool | None = None
+    show_on_main_grid: bool | None = None
+    pinned: bool | None = None
+    partnership_label: bool | None = None
+    partnership_partner: str | None = Field(default=None, max_length=100)
+    cover_crop_x: int | None = Field(default=None, ge=0, le=100)
+    cover_crop_y: int | None = Field(default=None, ge=0, le=100)
+    cover_zoom: float | None = Field(default=None, ge=1, le=2)
 
 
 class ReelCommentCreate(BaseModel):
@@ -50,8 +69,45 @@ class ReelViewEvent(BaseModel):
     completed: bool = False
 
 
+class ReelPlaybackEvent(BaseModel):
+    session_id: str = Field(..., min_length=32, max_length=36, pattern=r"^[A-Za-z0-9_-]+$")
+    sequence: int = Field(..., ge=0, le=10000)
+    event: Literal["START", "PROGRESS", "PAUSE", "RESUME", "SKIP", "COMPLETE", "REPLAY"]
+    delta_ms: int = Field(0, ge=0, le=10000)
+    position_ms: int = Field(0, ge=0, le=180000)
+
+
 class ReelShareCreate(BaseModel):
     conversation_id: int
+
+
+class ReelPollVoteCreate(BaseModel):
+    option_id: int
+
+
+def validate_schedule(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        raise HTTPException(400, "Choose a time with a timezone")
+    value = value.astimezone(timezone.utc)
+    now = datetime.now(timezone.utc)
+    if not now + timedelta(minutes=1) <= value <= now + timedelta(days=30):
+        raise HTTPException(400, "Schedule a Reel from one minute to 30 days ahead")
+    return value
+
+
+def validate_poll(raw: str) -> list[str]:
+    try:
+        values = json.loads(raw)
+    except (ValueError, TypeError):
+        raise HTTPException(400, "Invalid Reel poll")
+    if not isinstance(values, list) or (values and not 2 <= len(values) <= 4):
+        raise HTTPException(400, "A poll needs two to four options")
+    labels = [value.strip() for value in values if isinstance(value, str)]
+    if len(labels) != len(values) or any(not label or len(label) > 100 for label in labels) or len({label.casefold() for label in labels}) != len(labels):
+        raise HTTPException(400, "Poll options must be unique and 1–100 characters")
+    return labels
 
 
 def own_reel(db: Session, public_id: str, user_id: int) -> Reel:
@@ -68,12 +124,26 @@ async def reel_notify(db, recipient_id, actor_id, kind, reel):
 
 @router.post("", status_code=201)
 async def create_reel(video: UploadFile = File(...), caption: str = Form(""),
-    visibility: Visibility = Form("EVERYONE"), publish: bool = Form(True),
-    allow_comments: bool = Form(True), allow_download: bool = Form(False),
+    visibility: Visibility = Form("EVERYONE"), publish: str = Form("true"),
+    allow_comments: str = Form("true"), allow_download: bool = Form(False),
+    location: str = Form(""), scheduled_at: datetime | None = Form(None),
+    hide_like_count: bool = Form(False), hide_share_count: bool = Form(False),
+    poll_options: str = Form("[]"),
     current: User = Depends(get_current_user), db: Session = Depends(get_db)):
     throttle(current.id, "reel_upload", 5, 3600)
+    def parse_form_boolean(value: str, label: str) -> bool:
+        normalized = value.strip().lower()
+        if normalized not in {"true", "false", "1", "0", "on", "off", "yes", "no"}:
+            raise HTTPException(400, f"Invalid {label} setting")
+        return normalized in {"true", "1", "on", "yes"}
+    publish_requested = parse_form_boolean(publish, "publish")
+    comments_allowed = parse_form_boolean(allow_comments, "comment")
     if len(caption) > 2200:
         raise HTTPException(400, "Caption is too long")
+    if len(location.strip()) > 120:
+        raise HTTPException(400, "Location is too long")
+    scheduled_at = validate_schedule(scheduled_at)
+    poll_labels = validate_poll(poll_options)
     name = (video.filename or "").lower()
     ext = name.rsplit(".", 1)[-1] if "." in name else ""
     if (ext, video.content_type) not in {("mp4", "video/mp4"), ("webm", "video/webm")}:
@@ -88,8 +158,8 @@ async def create_reel(video: UploadFile = File(...), caption: str = Form(""),
         with source.open("wb") as target:
             while chunk := await video.read(1024 * 1024):
                 size += len(chunk)
-                if size > MAX_BYTES:
-                    raise HTTPException(413, "Reel video exceeds 60 MB")
+                if size >= MAX_BYTES:
+                    raise HTTPException(413, "Reel video exceeds 50 MB")
                 if not first:
                     first = chunk[:16]
                 target.write(chunk)
@@ -97,11 +167,28 @@ async def create_reel(video: UploadFile = File(...), caption: str = Form(""),
         valid_webm = ext == "webm" and first.startswith(b"\x1a\x45\xdf\xa3")
         if not size or not (valid_mp4 or valid_webm):
             raise HTTPException(400, "Video contents do not match its format")
+        try:
+            raw = await video_command("ffprobe", "-v", "error", "-show_streams", "-show_format",
+                "-of", "json", str(source), timeout=30)
+            info = json.loads(raw)
+            video_stream = next((stream for stream in info.get("streams", [])
+                if stream.get("codec_type") == "video"), None)
+            duration = float(info.get("format", {}).get("duration") or
+                (video_stream or {}).get("duration") or 0)
+        except (ValueError, OSError, TypeError):
+            raise HTTPException(400, "Video could not be read")
+        if not 1 <= duration < 60:
+            raise HTTPException(400, "Reels must be at least 1 second and shorter than 60 seconds")
         reel = Reel(public_id=public_id, creator_id=current.id,
             caption=sanitize_text(caption.strip()), visibility=visibility,
-            publish_requested=publish, allow_comments=allow_comments,
-            allow_download=allow_download, source_path=str(source), status="PROCESSING")
+            publish_requested=publish_requested, allow_comments=comments_allowed,
+            allow_download=allow_download, location=sanitize_text(location.strip()),
+            scheduled_at=scheduled_at, hide_like_count=hide_like_count,
+            hide_share_count=hide_share_count, source_path=str(source), status="PROCESSING")
         db.add(reel)
+        db.flush()
+        for position, label in enumerate(poll_labels):
+            db.add(ReelPollOption(reel_id=reel.id, label=sanitize_text(label), position=position))
         db.commit()
         db.refresh(reel)
         index_caption(db, reel)
@@ -113,20 +200,28 @@ async def create_reel(video: UploadFile = File(...), caption: str = Form(""),
 
 
 @router.get("")
-def list_reels(mode: Literal["for_you", "following", "trending", "new", "saved", "mine"] = "for_you",
+def list_reels(mode: Literal["for_you", "following", "trending", "new", "saved", "mine", "archive"] = "for_you",
     q: str = Query("", max_length=100), creator_id: int | None = None,
+    placement: Literal["reels", "main"] = "reels",
     limit: int = Query(8, ge=1, le=20), offset: int = Query(0, ge=0),
     current: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    if mode == "mine":
-        rows = db.query(Reel).filter_by(creator_id=current.id).filter(Reel.deleted_at.is_(None))\
+    if placement == "main" and creator_id is None:
+        raise HTTPException(400, "Choose a profile for the main grid")
+    if mode == "archive":
+        rows = db.query(Reel).filter_by(creator_id=current.id, status="ARCHIVED").filter(Reel.deleted_at.is_(None))\
+            .order_by(Reel.created_at.desc()).offset(offset).limit(limit+1).all()
+    elif mode == "mine":
+        rows = db.query(Reel).filter_by(creator_id=current.id).filter(Reel.deleted_at.is_(None), Reel.status != "ARCHIVED")\
             .order_by(Reel.created_at.desc()).offset(offset).limit(limit+1).all()
     elif mode == "saved":
         rows = visible_query(db, current.id)\
             .join(ReelBookmark, ReelBookmark.reel_id == Reel.id).filter(ReelBookmark.user_id == current.id)\
             .order_by(ReelBookmark.created_at.desc()).offset(offset).limit(limit+1).all()
     elif creator_id:
-        rows = visible_query(db, current.id)\
-            .filter(Reel.creator_id == creator_id).order_by(Reel.published_at.desc())\
+        profile_query = visible_query(db, current.id).filter(Reel.creator_id == creator_id)
+        if placement == "main":
+            profile_query = profile_query.filter(Reel.show_on_main_grid.is_(True))
+        rows = profile_query.order_by(Reel.pinned_at.desc(), Reel.published_at.desc())\
             .offset(offset).limit(limit+1).all()
     else:
         rows = feed(db, current.id, mode, limit+1, offset, q.strip())
@@ -136,15 +231,21 @@ def list_reels(mode: Literal["for_you", "following", "trending", "new", "saved",
 
 
 @router.get("/{public_id}/media/{kind}")
-def reel_media(public_id: str, kind: Literal["video", "thumbnail"], viewer: int,
-    expires: int, signature: str, db: Session = Depends(get_db)):
+def reel_media(public_id: str, kind: Literal["video", "thumbnail", "download"], viewer: int,
+    expires: int, signature: str, current: User = Depends(get_current_user),
+    db: Session = Depends(get_db)):
+    if viewer != current.id:
+        raise HTTPException(403, "Media link belongs to another account")
     if not valid_signature(public_id, viewer, kind, expires, signature):
         raise HTTPException(403, "Media link expired")
     reel = get_visible(db, public_id, viewer)
-    path = reel.video_path if kind == "video" else reel.thumbnail_path
+    if kind == "download" and not reel.allow_download and viewer != reel.creator_id:
+        raise HTTPException(403, "Downloading is disabled")
+    path = reel.video_path if kind in {"video", "download"} else reel.thumbnail_path
     if not path or not Path(path).is_file() or not Path(path).resolve().is_relative_to(MEDIA_ROOT):
         raise HTTPException(404, "Media not found")
-    return FileResponse(path, media_type="video/mp4" if kind == "video" else "image/jpeg",
+    return FileResponse(path, media_type="video/mp4" if kind in {"video", "download"} else "image/jpeg",
+        filename=f"reel-{reel.public_id}.mp4" if kind == "download" else None,
         headers={"Cache-Control":"private, max-age=300", "X-Content-Type-Options":"nosniff"})
 
 
@@ -178,6 +279,57 @@ async def edit_reel(public_id: str, data: ReelEdit, current: User = Depends(get_
         reel.allow_comments = data.allow_comments
     if data.allow_download is not None:
         reel.allow_download = data.allow_download
+    if data.location is not None:
+        reel.location = sanitize_text(data.location.strip())
+    if data.hide_like_count is not None:
+        reel.hide_like_count = data.hide_like_count
+    if data.hide_share_count is not None:
+        reel.hide_share_count = data.hide_share_count
+    creator_only = (data.show_on_main_grid is not None or data.pinned is not None or
+        data.partnership_label is not None or data.partnership_partner is not None or
+        data.cover_crop_x is not None or data.cover_crop_y is not None or data.cover_zoom is not None)
+    if creator_only and current.account_type != "CREATOR":
+        raise HTTPException(403, "Switch to a Creator Account to manage this setting")
+    if data.show_on_main_grid is not None:
+        reel.show_on_main_grid = data.show_on_main_grid
+        if not data.show_on_main_grid:
+            reel.pinned_at = None
+    if data.pinned is not None:
+        if reel.status != "PUBLISHED":
+            raise HTTPException(400, "Only published Reels can be pinned")
+        if data.pinned:
+            if not reel.pinned_at:
+                db.query(User.id).filter(User.id == current.id).with_for_update().first()
+                count = db.query(func.count(Reel.id)).filter(Reel.creator_id == current.id,
+                    Reel.status == "PUBLISHED", Reel.deleted_at.is_(None), Reel.pinned_at.isnot(None)).scalar() or 0
+                post_count = db.query(func.count(Post.id)).filter(Post.author_id == current.id,
+                    Post.deleted_at.is_(None), Post.profile_pinned_at.isnot(None)).scalar() or 0
+                if count + post_count >= 3:
+                    raise HTTPException(409, "You can pin up to three profile items")
+                reel.pinned_at = datetime.now(timezone.utc)
+            reel.show_on_main_grid = True
+        else:
+            reel.pinned_at = None
+    if data.partnership_label is not None:
+        reel.partnership_label = data.partnership_label
+        if not data.partnership_label:
+            reel.partnership_partner = None
+    if data.partnership_partner is not None:
+        partner = sanitize_text(data.partnership_partner.strip())
+        if partner and not reel.partnership_label:
+            raise HTTPException(400, "Enable the partnership label first")
+        reel.partnership_partner = partner or None
+    if data.cover_crop_x is not None:
+        reel.cover_crop_x = data.cover_crop_x
+    if data.cover_crop_y is not None:
+        reel.cover_crop_y = data.cover_crop_y
+    if data.cover_zoom is not None:
+        reel.cover_zoom = data.cover_zoom
+    if data.scheduled_at is not None:
+        if reel.status not in {"PROCESSING", "TRANSCODING", "READY"}:
+            raise HTTPException(400, "Only unpublished Reels can be scheduled")
+        reel.scheduled_at = validate_schedule(data.scheduled_at)
+        reel.publish_requested = True
     if data.archive is not None:
         if data.archive and reel.status == "PUBLISHED":
             reel.status = "ARCHIVED"
@@ -185,10 +337,13 @@ async def edit_reel(public_id: str, data: ReelEdit, current: User = Depends(get_
             reel.status = "PUBLISHED"
         else:
             raise HTTPException(400,"Only published Reels can be archived or restored")
+        if data.archive:
+            reel.pinned_at = None
     if data.publish:
         if reel.status == "READY":
             reel.status = "PUBLISHED"
             reel.published_at = datetime.now(timezone.utc)
+            reel.scheduled_at = None
         elif reel.status == "PROCESSING":
             reel.publish_requested = True
         else:
@@ -225,7 +380,7 @@ def delete_reel(public_id: str, current: User = Depends(get_current_user), db: S
 async def choose_cover(public_id: str, time_seconds: float = Form(...),
     current: User = Depends(get_current_user), db: Session = Depends(get_db)):
     reel = own_reel(db,public_id,current.id)
-    if reel.status not in {"READY","PUBLISHED"} or not reel.video_path or reel.duration is None:
+    if reel.status not in {"READY","PUBLISHED","ARCHIVED"} or not reel.video_path or reel.duration is None:
         raise HTTPException(400,"Reel is not ready")
     if not 0 <= time_seconds < reel.duration:
         raise HTTPException(400,"Choose a frame within the Reel")
@@ -246,7 +401,7 @@ async def choose_cover(public_id: str, time_seconds: float = Form(...),
 async def upload_cover(public_id: str, image: UploadFile = File(...),
     current: User = Depends(get_current_user), db: Session = Depends(get_db)):
     reel = own_reel(db,public_id,current.id)
-    if reel.status not in {"READY","PUBLISHED"} or not reel.thumbnail_path:
+    if reel.status not in {"READY","PUBLISHED","ARCHIVED"} or not reel.thumbnail_path:
         raise HTTPException(400,"Reel is not ready")
     ext = (image.filename or "").rsplit(".",1)[-1].lower()
     if (ext,image.content_type) not in {("png","image/png"),("jpg","image/jpeg"),
@@ -279,7 +434,7 @@ async def upload_cover(public_id: str, image: UploadFile = File(...),
 @router.post("/{public_id}/like")
 async def like_reel(public_id: str, current: User = Depends(get_current_user), db: Session = Depends(get_db)):
     throttle(current.id, "reel_like", 60)
-    reel = get_visible(db, public_id, current.id)
+    reel = published_reel(db, public_id, current.id)
     if not db.query(ReelLike.id).filter_by(reel_id=reel.id,user_id=current.id).first():
         db.add(ReelLike(reel_id=reel.id,user_id=current.id)); db.commit()
         await reel_notify(db, reel.creator_id, current.id, "reel_like", reel)
@@ -288,14 +443,30 @@ async def like_reel(public_id: str, current: User = Depends(get_current_user), d
 
 @router.delete("/{public_id}/like")
 def unlike_reel(public_id: str, current: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    reel = get_visible(db, public_id, current.id)
+    reel = published_reel(db, public_id, current.id)
     db.query(ReelLike).filter_by(reel_id=reel.id,user_id=current.id).delete(); db.commit()
+    return serialize(db, reel, current.id)
+
+
+@router.post("/{public_id}/poll/vote")
+def vote_reel_poll(public_id: str, data: ReelPollVoteCreate,
+    current: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    throttle(current.id, "reel_poll_vote", 30)
+    reel = published_reel(db, public_id, current.id)
+    option = db.query(ReelPollOption).filter_by(id=data.option_id, reel_id=reel.id).first()
+    if not option or reel.status != "PUBLISHED":
+        raise HTTPException(404, "Poll option not found")
+    existing = db.query(ReelPollVote).filter_by(reel_id=reel.id, user_id=current.id).first()
+    if existing:
+        raise HTTPException(409, "You already voted in this poll")
+    db.add(ReelPollVote(reel_id=reel.id, option_id=option.id, user_id=current.id))
+    db.commit()
     return serialize(db, reel, current.id)
 
 
 @router.post("/{public_id}/bookmark")
 def bookmark_reel(public_id: str, current: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    reel = get_visible(db, public_id, current.id)
+    reel = published_reel(db, public_id, current.id)
     if not db.query(ReelBookmark.id).filter_by(reel_id=reel.id,user_id=current.id).first():
         db.add(ReelBookmark(reel_id=reel.id,user_id=current.id)); db.commit()
     return serialize(db, reel, current.id)
@@ -303,15 +474,16 @@ def bookmark_reel(public_id: str, current: User = Depends(get_current_user), db:
 
 @router.delete("/{public_id}/bookmark")
 def unbookmark_reel(public_id: str, current: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    reel = get_visible(db, public_id, current.id)
+    reel = published_reel(db, public_id, current.id)
     db.query(ReelBookmark).filter_by(reel_id=reel.id,user_id=current.id).delete(); db.commit()
     return serialize(db, reel, current.id)
 
 
 def comment_dict(db, comment, viewer_id):
+    import html
     user = db.get(User, comment.author_id)
     return {"id":comment.id,"reel_id":comment.reel_id,"parent_id":comment.parent_id,
-        "content":comment.content,"author":user.to_dict(False),
+        "content":html.unescape(comment.content),"author":user.to_dict(False),
         "created_at":comment.created_at.isoformat(),
         "pinned":comment.pinned_at is not None,
         "likes_count":db.query(func.count(ReelCommentLike.id)).filter_by(comment_id=comment.id).scalar() or 0,
@@ -333,7 +505,7 @@ def reel_comments(public_id: str, limit: int = Query(20,ge=1,le=50), offset: int
 async def add_comment(public_id: str, data: ReelCommentCreate,
     current: User = Depends(get_current_user), db: Session = Depends(get_db)):
     throttle(current.id, "reel_comment", 20)
-    reel = get_visible(db, public_id, current.id)
+    reel = published_reel(db, public_id, current.id)
     if not reel.allow_comments or reel.status != "PUBLISHED":
         raise HTTPException(403, "Comments are disabled")
     parent = None
@@ -391,7 +563,7 @@ def unpin_comment(public_id: str, comment_id: int, current: User = Depends(get_c
 @router.post("/{public_id}/comments/{comment_id}/like")
 def like_comment(public_id: str, comment_id: int, current: User = Depends(get_current_user),
     db: Session = Depends(get_db)):
-    reel = get_visible(db, public_id, current.id)
+    reel = published_reel(db, public_id, current.id)
     comment = db.get(ReelComment,comment_id)
     if not comment or comment.reel_id != reel.id or comment.deleted_at:
         raise HTTPException(404, "Comment not found")
@@ -403,7 +575,7 @@ def like_comment(public_id: str, comment_id: int, current: User = Depends(get_cu
 @router.delete("/{public_id}/comments/{comment_id}/like")
 def unlike_comment(public_id: str, comment_id: int, current: User = Depends(get_current_user),
     db: Session = Depends(get_db)):
-    reel = get_visible(db, public_id, current.id)
+    reel = published_reel(db, public_id, current.id)
     comment = db.get(ReelComment,comment_id)
     if not comment or comment.reel_id != reel.id or comment.deleted_at:
         raise HTTPException(404, "Comment not found")
@@ -414,40 +586,42 @@ def unlike_comment(public_id: str, comment_id: int, current: User = Depends(get_
 @router.post("/{public_id}/view")
 def record_view(public_id: str, data: ReelViewEvent,
     current: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    from app.models.reel import ReelPlayback
     throttle(current.id, "reel_view", 60)
-    reel = get_visible(db, public_id, current.id)
-    if reel.status != "PUBLISHED" or data.watched_ms < 3000:
-        return {"counted":False}
-    view = db.query(ReelView).filter_by(reel_id=reel.id,user_id=current.id,
-        session_id=data.session_id).first()
-    if not view:
-        view = db.query(ReelView).filter(ReelView.reel_id == reel.id,
-            ReelView.user_id == current.id,
-            ReelView.created_at >= datetime.now(timezone.utc)-timedelta(hours=24)).first()
-    if not view:
-        view = ReelView(reel_id=reel.id,user_id=current.id,session_id=data.session_id)
-        db.add(view)
-    view.watched_ms = max(view.watched_ms or 0,data.watched_ms)
-    view.completed = bool(view.completed or data.completed)
-    db.commit()
-    return {"counted":True}
+    reel = published_reel(db, public_id, current.id)
+    if reel.status != "PUBLISHED":
+        return {"counted": False}
+    # Kept for older clients, but client-provided duration cannot create a view.
+    playback = db.query(ReelPlayback).filter_by(reel_id=reel.id, user_id=current.id,
+                                                session_id=data.session_id).first()
+    return {"counted": bool(playback and playback.qualified)}
+
+
+@router.post("/{public_id}/playback")
+def record_playback(public_id: str, data: ReelPlaybackEvent,
+    current: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    from app.services.reel_playback import capture
+    throttle(current.id, "reel_playback", 300, 60)
+    reel = published_reel(db, public_id, current.id)
+    if reel.status != "PUBLISHED":
+        raise HTTPException(404, "Reel not found")
+    return capture(db, reel, current.id, data.session_id, data.sequence,
+                   data.event, data.delta_ms, data.position_ms)
 
 
 @router.post("/{public_id}/share")
 async def share_reel(public_id: str, data: ReelShareCreate,
     current: User = Depends(get_current_user), db: Session = Depends(get_db)):
     throttle(current.id, "reel_share", 20)
-    reel = get_visible(db, public_id, current.id)
+    reel = published_reel(db, public_id, current.id)
     if reel.status != "PUBLISHED":
         raise HTTPException(400, "Reel is not published")
     if not db.query(ConversationMember.id).filter_by(conversation_id=data.conversation_id,
         user_id=current.id).first():
-        raise HTTPException(403, "Not a conversation member")
-    creator = db.get(User,reel.creator_id)
-    url = f"/reels.html?id={reel.public_id}"
-    content = f"Shared Reel by @{creator.username}\n{reel.caption[:120]}\n{url}"
+        raise HTTPException(404, "Conversation not found")
     await MessageService.send_message(db,current.id,
-        MessageCreate(conversation_id=data.conversation_id,content=content))
+        MessageCreate(conversation_id=data.conversation_id,content=reel.public_id,
+            message_type="REEL"))
     db.add(ReelShare(reel_id=reel.id,user_id=current.id,
         conversation_id=data.conversation_id)); db.commit()
     await reel_notify(db,reel.creator_id,current.id,"reel_share",reel)
@@ -473,7 +647,7 @@ def reel_analytics(public_id: str, current: User = Depends(get_current_user),
 def report_reel(public_id: str, reason: Literal["spam","harassment","impersonation","inappropriate","scam","other"] = Form(...),
     details: str = Form(""), current: User = Depends(get_current_user), db: Session = Depends(get_db)):
     throttle(current.id,"reel_report",10,3600)
-    reel = get_visible(db,public_id,current.id)
+    reel = published_reel(db,public_id,current.id)
     if len(details)>500:
         raise HTTPException(400,"Report details are too long")
     if not db.query(Report.id).filter_by(reporter_id=current.id,entity_type="reel",entity_id=reel.id).first():
@@ -487,7 +661,7 @@ def report_reel_comment(public_id: str, comment_id: int,
     reason: Literal["spam","harassment","impersonation","inappropriate","scam","other"] = Form(...),
     details: str = Form(""), current: User = Depends(get_current_user), db: Session = Depends(get_db)):
     throttle(current.id,"reel_report",10,3600)
-    reel = get_visible(db,public_id,current.id)
+    reel = published_reel(db,public_id,current.id)
     comment = db.get(ReelComment,comment_id)
     if not comment or comment.reel_id != reel.id or comment.deleted_at:
         raise HTTPException(404,"Comment not found")

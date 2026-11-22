@@ -9,6 +9,7 @@ from app.models.conversation import Conversation, ConversationMember
 from app.models.message import Message, MessageRead, MessageBookmark
 from app.models.reaction import MessageReaction
 from app.models.attachment import Attachment
+from app.models.chat_upload import ChatUpload
 from app.models.user import User
 from app.schemas.message import MessageCreate, MessageEdit
 from app.services.user_service import UserService
@@ -153,6 +154,7 @@ class MessageService:
             "sender_id": message.sender_id,
             "content": content,
             "message_type": message.message_type,
+            "encryption_version": 0,
             "reply_to_id": message.reply_to_id,
             "reply_to": reply_dict,
             "thread_root_id": message.thread_root_id,
@@ -179,7 +181,8 @@ class MessageService:
 
     @staticmethod
     async def send_message(db: Session, sender_id: int, msg_data: MessageCreate,
-                           scheduled_message_id: Optional[int] = None) -> Dict[str, Any]:
+                           scheduled_message_id: Optional[int] = None,
+                           trusted_forward: bool = False) -> Dict[str, Any]:
         conv_id = msg_data.conversation_id
         if scheduled_message_id:
             already_sent = db.query(Message).filter_by(scheduled_message_id=scheduled_message_id).first()
@@ -194,8 +197,8 @@ class MessageService:
 
         if not membership:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You are not a member of this conversation."
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Conversation not found."
             )
 
         conv = db.query(Conversation).filter(Conversation.id == conv_id).first()
@@ -231,10 +234,27 @@ class MessageService:
                 root.expires_at and root.expires_at.replace(tzinfo=timezone.utc) <= datetime.now(timezone.utc)):
                 raise HTTPException(400, "Thread target is not available in this conversation")
             thread_root_id = root.thread_root_id or root.id
-        if msg_data.message_type not in {"TEXT", "IMAGE", "FILE", "AUDIO", "VIDEO"}:
+        if msg_data.message_type not in {"TEXT", "IMAGE", "FILE", "AUDIO", "VIDEO", "REEL"}:
             raise HTTPException(400, "Unsupported message type")
+        if msg_data.message_type == "REEL":
+            from app.services.reel_service import get_visible
+            get_visible(db, msg_data.content, sender_id)
         if not msg_data.content.strip() and not msg_data.attachments:
             raise HTTPException(400, "Message cannot be empty")
+
+        # A URL and metadata supplied by a browser are not proof of upload ownership.
+        private_uploads = []
+        if msg_data.attachments and not trusted_forward:
+            for att in msg_data.attachments:
+                upload_id = att.file_url.rsplit("/", 1)[-1]
+                upload = db.get(ChatUpload, upload_id)
+                if not upload or upload.uploader_id != sender_id or upload.claimed or (
+                    att.file_name != upload.file_name or att.file_type != upload.file_type or
+                    att.file_size != upload.file_size):
+                    raise HTTPException(404, "Chat attachment not found")
+                private_uploads.append(upload)
+            if len({upload.id for upload in private_uploads}) != len(private_uploads):
+                raise HTTPException(400, "Each attachment can only be sent once")
 
         # Create message record
         new_msg = Message(
@@ -261,10 +281,16 @@ class MessageService:
                     file_name=att.file_name,
                     file_type=att.file_type,
                     file_size=att.file_size,
-                    public_id=att.public_id,
+                    public_id=att.file_url.rsplit("/", 1)[-1] if att.file_url.startswith("/api/messages/attachments/") else att.public_id,
                     created_at=datetime.now(timezone.utc)
                 )
                 db.add(a_record)
+            for upload in private_uploads:
+                claimed = db.query(ChatUpload).filter_by(id=upload.id, uploader_id=sender_id,
+                    claimed=False).update({"claimed": True}, synchronize_session="fetch")
+                if claimed != 1:
+                    db.rollback()
+                    raise HTTPException(404, "Chat attachment not found")
 
         # Update conversation timestamp
         conv.updated_at = datetime.now(timezone.utc)
@@ -300,6 +326,7 @@ class MessageService:
             await manager.send_to_user(recipient_id, {"event": "social_notification", "data": {
                 "id": item.id, "type": "message", "entity_type": "conversation",
                 "entity_id": conv_id, "read": False, "alert": may_alert,
+                "conversation_public_id": conv.public_id,
                 "preview": bool(settings_row.notification_preview) if settings_row else True,
                 "title": sender.display_name or sender.username,
                 "body": (new_msg.content or "Sent an attachment")[:100]
@@ -346,6 +373,8 @@ class MessageService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Cannot edit a deleted message."
             )
+        if msg.message_type == "REEL":
+            raise HTTPException(400, "A shared Reel cannot be edited.")
 
         msg.content = sanitize_text(edit_data.content)
         msg.updated_at = datetime.now(timezone.utc)
@@ -413,14 +442,16 @@ class MessageService:
         existing = db.query(MessageReaction).filter(
             MessageReaction.message_id == message_id,
             MessageReaction.user_id == user_id,
-            MessageReaction.emoji == emoji
-        ).first()
+        ).all()
 
         action = "added"
-        if existing:
-            db.delete(existing)
+        if len(existing) == 1 and existing[0].emoji == emoji:
+            db.delete(existing[0])
             action = "removed"
         else:
+            for previous in existing:
+                db.delete(previous)
+            db.flush()
             rxn = MessageReaction(
                 message_id=message_id,
                 user_id=user_id,
@@ -449,7 +480,7 @@ class MessageService:
         """Mark all unread messages in conversation as read by user."""
         member = db.query(ConversationMember).filter_by(conversation_id=conversation_id, user_id=user_id).first()
         if not member:
-            raise HTTPException(status_code=403, detail="Not a conversation member.")
+            raise HTTPException(status_code=404, detail="Conversation not found.")
         # Find messages in conversation not sent by user and not yet read by user
         read_subquery = select(MessageRead.message_id).filter(MessageRead.user_id == user_id)
 
@@ -507,7 +538,7 @@ class MessageService:
             ConversationMember.user_id == user_id
         ).first()
         if not membership:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a conversation member.")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found.")
 
         query = db.query(Message).filter(Message.conversation_id == conversation_id,
             Message.thread_root_id.is_(None),

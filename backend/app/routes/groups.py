@@ -29,6 +29,7 @@ def create_group(
             return c
     return {
         "id": conv.id,
+        "public_id": conv.public_id,
         "type": conv.type,
         "name": conv.name,
         "created_at": conv.created_at.isoformat(),
@@ -51,6 +52,7 @@ def update_group(
             return c
     return {
         "id": conv.id,
+        "public_id": conv.public_id,
         "type": conv.type,
         "name": conv.name,
         "created_at": conv.created_at.isoformat(),

@@ -9,6 +9,7 @@ A unified communication app built with **React, TypeScript, Vite, TanStack Query
 - **Social**: For You and Following feeds, posts with media and polls, replies, reactions, reposts, bookmarks, topics, profiles, follows, and search.
 - **Messaging**: direct and group chats with real-time updates, attachments, message replies and actions, disappearing messages, scheduled sends, group management, and voice/video calling.
 - **Stories and Reels**: expiring text/media stories with replies, plus a vertical Reel feed with upload, comments, likes, saves, and creator editing.
+- **Creator accounts**: optional public creator profiles, professional analytics from recorded Relaydot activity, and server-scheduled posts. See [Creator analytics](CREATOR_ANALYTICS.md) for metric definitions and operational requirements.
 - **Communities**: discovery, creation, joining, posts, and linked group chats.
 - **Account**: password, one-time-code, and passkey sign-in; registration verification; password recovery; profile images; privacy controls; sessions and two-factor authentication.
 - **Responsive UI**: desktop columns and mobile navigation in the same React application.

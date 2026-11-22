@@ -34,11 +34,13 @@ def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
     
+    from app.security.browser_session import resolve_cookie, valid_session
+    browser_session = resolve_cookie(db, request.cookies) if not token else None
     raw_token = extract_token_from_request(request, token)
-    if not raw_token:
+    if not raw_token and not browser_session:
         raise credentials_exception
 
-    payload = decode_token(raw_token)
+    payload = {"sub": str(browser_session.user_id), "session_id": browser_session.session_id} if browser_session else decode_token(raw_token)
     if payload is None:
         raise credentials_exception
 
@@ -77,8 +79,8 @@ def get_current_user(
     # Check if session is tracked and still valid
     session_id = payload.get("session_id")
     if session_id:
-        user_session = db.query(UserSession).filter(UserSession.session_id == session_id).first()
-        if not user_session or user_session.user_id != user.id or user_session.revoked:
+        user_session = browser_session or db.query(UserSession).filter(UserSession.session_id == session_id).first()
+        if not valid_session(user_session) or user_session.user_id != user.id:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Session has been revoked or expired.",
@@ -155,51 +157,11 @@ def get_current_user_optional(
         return None
 
 
-def get_current_user_ws(
-    websocket: WebSocket,
-    token: Optional[str] = Query(None),
-    db: Session = Depends(get_db)
-) -> Optional[User]:
-    """Validate JWT token passed in WebSocket query parameters, headers, or cookies."""
-    if not token:
-        # Check Authorization header if present
-        auth_header = websocket.headers.get("authorization")
-        if auth_header and auth_header.startswith("Bearer "):
-            token = auth_header.split(" ", 1)[1]
 
-    if not token:
-        # Check cookies
-        token = websocket.cookies.get("access_token")
-
-    if not token:
-        return None
-
-    payload = decode_token(token)
-    if not payload:
-        return None
-
-    if payload.get("type") == "2fa_ticket":
-        return None
-
-    user_id_str = payload.get("sub")
-    if not user_id_str:
-        return None
-
-    try:
-        user_id = int(user_id_str)
-        user = db.query(User).filter(User.id == user_id).first()
-        if not user or not user.is_verified or user.account_state == "BANNED":
-            return None
-
-        # Check session validity
-        session_id = payload.get("session_id")
-        if not session_id:
-            return None
-        user_session = db.query(UserSession).filter(UserSession.session_id == session_id,
-                                                    UserSession.user_id == user.id).first()
-        if not user_session or user_session.revoked or user_session.expires_at.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
-            return None
-
-        return user
-    except Exception:
-        return None
+def require_recent_auth(request: Request, user: User = Depends(get_current_user),
+                        db: Session = Depends(get_db)) -> User:
+    session = db.query(UserSession).filter_by(
+        session_id=getattr(request.state, "session_id", None), user_id=user.id).first()
+    if not session or datetime.now(timezone.utc) - (session.reauthenticated_at or session.created_at).replace(tzinfo=timezone.utc) > timedelta(minutes=10):
+        raise HTTPException(403, "Sign in again before changing account security.")
+    return user

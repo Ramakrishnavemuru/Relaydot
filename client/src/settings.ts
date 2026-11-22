@@ -25,7 +25,7 @@ export type AccountSettings = {
 
 export function applyAccountSettings(settings: AccountSettings) {
   const root = document.documentElement
-  root.dataset.accent = settings.accent.toLowerCase()
+  root.removeAttribute('data-accent')
   root.dataset.density = settings.density.toLowerCase()
   root.dataset.chatTextSize = settings.chat_text_size.toLowerCase()
   root.dataset.chatWallpaper = settings.chat_wallpaper.toLowerCase()

@@ -30,6 +30,9 @@ class UserPublicResponse(BaseModel):
     website: Optional[str] = None
     is_online: bool = False
     is_private: bool = False
+    account_type: str = "PERSONAL"
+    creator_category: Optional[str] = None
+    creator_contact_enabled: bool = False
     last_seen: Optional[str] = None
     created_at: Optional[str] = None
 
@@ -55,4 +58,7 @@ class UserResponse(BaseModel):
     show_online: bool = True
     show_read_receipts: bool = True
     is_private: bool = False
+    account_type: str = "PERSONAL"
+    creator_category: Optional[str] = None
+    creator_contact_enabled: bool = False
     created_at: Optional[str] = None

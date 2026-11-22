@@ -1,3 +1,4 @@
+from app.security.dependencies import require_recent_auth
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, status, Request, Response
@@ -7,7 +8,7 @@ from app.database import get_db
 from app.models.user import User
 from app.models.auth_attempt import AuthAttempt
 from app.security.jwt import hash_token
-from fastapi import HTTPException
+from fastapi import HTTPException, Query
 from app.schemas.auth import (
     RegisterRequest,
     LoginRequest,
@@ -40,8 +41,12 @@ def guard_auth(db: Session, request: Request, action: str, subject: str, limit: 
     count = db.query(AuthAttempt).filter(AuthAttempt.action == action,
         AuthAttempt.ip_hash == ip_hash, AuthAttempt.subject_hash == subject_hash,
         AuthAttempt.created_at >= since).count()
-    if count >= limit:
-        raise HTTPException(429, "Too many attempts. Please try again later.")
+    account_count = db.query(AuthAttempt).filter(AuthAttempt.action == action,
+        AuthAttempt.subject_hash == subject_hash, AuthAttempt.created_at >= since).count()
+    network_count = db.query(AuthAttempt).filter(AuthAttempt.action == action,
+        AuthAttempt.ip_hash == ip_hash, AuthAttempt.created_at >= since).count()
+    if count >= limit or account_count >= limit or network_count >= limit * 5:
+        raise HTTPException(429, "Too many attempts. Please try again later.", headers={"Retry-After": str(minutes * 60)})
     db.add(AuthAttempt(ip_hash=ip_hash, subject_hash=subject_hash, action=action))
     db.commit()
 
@@ -57,6 +62,7 @@ def register(
     db: Session = Depends(get_db)
 ):
     """Register account with email or phone number. Requires OTP confirmation before full active login."""
+    guard_auth(db, request, "REGISTER", request.client.host if request.client else "unknown", 10, 60)
     return AuthService.register_user(db, req, request, response)
 
 
@@ -109,6 +115,25 @@ def verify_2fa(
 # -------------------------------------------------------------
 # Token Rotation & Refresh
 # -------------------------------------------------------------
+@router.get("/security-events")
+def security_events(current: User = Depends(get_current_user), db: Session = Depends(get_db),
+                    limit: int = Query(30, ge=1, le=100), offset: int = Query(0, ge=0, le=10000)):
+    from app.models.security_event import SecurityEvent
+    rows = db.query(SecurityEvent).filter_by(user_id=current.id).order_by(SecurityEvent.id.desc()).offset(offset).limit(limit).all()
+    return {"items": [{"id": row.id, "kind": row.kind, "description": row.description,
+                       "created_at": (row.created_at.replace(tzinfo=timezone.utc) if row.created_at.tzinfo is None else row.created_at).isoformat()} for row in rows]}
+
+
+@router.get("/csrf")
+def session_csrf(request: Request, response: Response, db: Session = Depends(get_db)):
+    from app.security.browser_session import resolve_cookie, csrf_token
+    session = resolve_cookie(db, request.cookies)
+    if not session:
+        raise HTTPException(401, "Sign in required")
+    response.headers["Cache-Control"] = "no-store"
+    return {"csrf_token": csrf_token(session)}
+
+
 @router.post("/refresh", response_model=TokenResponse)
 def refresh_token(
     request: Request,
@@ -166,10 +191,11 @@ async def revoke_device_session(
     session_id: str,
     request: Request,
     response: Response,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_recent_auth),
     db: Session = Depends(get_db)
 ):
     """Revoke a specific device session (logout device)."""
+    guard_auth(db, request, "DEVICE_MANAGEMENT", str(current_user.id), 20)
     current_sid = getattr(request.state, "session_id", None)
     AuthService.revoke_session(db, current_user.id, session_id, current_sid, response)
     await manager.close_session(session_id)
@@ -179,10 +205,11 @@ async def revoke_device_session(
 @router.post("/sessions/revoke-others")
 async def revoke_other_sessions(
     request: Request,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_recent_auth),
     db: Session = Depends(get_db)
 ):
     """Revoke all sessions except the current active device."""
+    guard_auth(db, request, "DEVICE_MANAGEMENT", str(current_user.id), 20)
     current_sid = getattr(request.state, "session_id", None)
     count = AuthService.revoke_other_sessions(db, current_user.id, current_sid)
     await manager.close_other_sessions(current_user.id, current_sid)
@@ -193,7 +220,8 @@ async def revoke_other_sessions(
 # 2FA Management (TOTP & Recovery Codes)
 # -------------------------------------------------------------
 @router.post("/2fa/totp/setup")
-def setup_totp(current_user: User = Depends(get_current_user)):
+def setup_totp(request: Request, db: Session = Depends(get_db), current_user: User = Depends(require_recent_auth)):
+    guard_auth(db, request, "MFA_SETTINGS", str(current_user.id), 10)
     """Initiate TOTP setup, returning secret and SVG QR code."""
     return AuthService.setup_totp(current_user)
 
@@ -201,10 +229,12 @@ def setup_totp(current_user: User = Depends(get_current_user)):
 @router.post("/2fa/totp/enable")
 def enable_totp(
     req: TOTPEnableRequest,
-    current_user: User = Depends(get_current_user),
+    request: Request,
+    current_user: User = Depends(require_recent_auth),
     db: Session = Depends(get_db)
 ):
     """Confirm code from authenticator app to enable 2FA and receive 8 backup recovery codes."""
+    guard_auth(db, request, "MFA_SETTINGS", str(current_user.id), 10)
     recovery_codes = AuthService.enable_totp(db, current_user, req.code)
     return {
         "message": "Two-factor authentication enabled successfully.",
@@ -215,10 +245,12 @@ def enable_totp(
 @router.post("/2fa/totp/disable")
 def disable_totp(
     req: TOTPDisableRequest,
-    current_user: User = Depends(get_current_user),
+    request: Request,
+    current_user: User = Depends(require_recent_auth),
     db: Session = Depends(get_db)
 ):
     """Disable 2FA after providing password or valid code."""
+    guard_auth(db, request, "MFA_SETTINGS", str(current_user.id), 10)
     AuthService.disable_totp(db, current_user, code=req.code, password=req.password)
     return {"message": "Two-factor authentication disabled successfully."}
 
@@ -227,7 +259,7 @@ def disable_totp(
 # Passkeys / WebAuthn
 # -------------------------------------------------------------
 @router.post("/passkeys/register/options")
-def passkey_register_options(current_user: User = Depends(get_current_user)):
+def passkey_register_options(current_user: User = Depends(require_recent_auth)):
     """Get WebAuthn creation options to register a new passkey."""
     return AuthService.get_passkey_register_options(current_user)
 
@@ -235,7 +267,7 @@ def passkey_register_options(current_user: User = Depends(get_current_user)):
 @router.post("/passkeys/register/verify")
 def passkey_register_verify(
     req: PasskeyRegisterVerifyRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_recent_auth),
     db: Session = Depends(get_db)
 ):
     """Verify and store a newly created passkey."""
@@ -250,11 +282,12 @@ def passkey_register_verify(
 def passkey_login_options(
     request: Request,
     identifier: Optional[str] = None,
+    staff_only: bool = False,
     db: Session = Depends(get_db)
 ):
     """Get WebAuthn authentication options for passkey login."""
     guard_auth(db, request, "PASSKEY_OPTIONS", identifier or "anonymous", 20)
-    return AuthService.get_passkey_login_options(db, identifier)
+    return AuthService.get_passkey_login_options(db, identifier, staff_only=staff_only)
 
 
 @router.post("/passkeys/login/verify", response_model=TokenResponse)
@@ -281,7 +314,7 @@ def list_passkeys(
 @router.delete("/passkeys/{passkey_id}")
 def delete_passkey(
     passkey_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_recent_auth),
     db: Session = Depends(get_db)
 ):
     """Delete a registered passkey."""
@@ -325,3 +358,40 @@ async def reset_password(req: ResetPasswordRequest, request: Request, db: Sessio
     user_id = AuthService.reset_password(db, req)
     await manager.close_other_sessions(user_id, None)
     return {"message": "Password has been reset successfully. Please log in."}
+
+
+from pydantic import BaseModel, Field
+
+class ReauthenticationRequest(BaseModel):
+    password: str = Field(min_length=1, max_length=128)
+    code: str = Field(default="", max_length=80)
+
+
+@router.post("/reauthenticate")
+def reauthenticate(req: ReauthenticationRequest, request: Request, response: Response,
+                   user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    from app.security.password import verify_password
+    from app.models.session import UserSession
+    from app.security.jwt import create_refresh_token
+    from app.models.security_event import record_security_event
+    guard_auth(db, request, "REAUTHENTICATE", str(user.id), 8)
+    if not user.password_hash or not verify_password(req.password, user.password_hash):
+        raise HTTPException(400, "Verification failed.")
+    if user.totp_enabled and not AuthService.verify_account_factor(db, user, req.code):
+        db.commit()
+        raise HTTPException(400, "Verification failed. Use a valid unused authenticator or recovery code.")
+    session = db.query(UserSession).filter_by(session_id=request.state.session_id, user_id=user.id).one()
+    session.reauthenticated_at = datetime.now(timezone.utc)
+    raw = create_refresh_token()
+    session.refresh_token_hash = hash_token(raw)
+    record_security_event(db, user.id, "REAUTHENTICATED", "Account security access verified.")
+    db.commit()
+    AuthService.set_auth_cookies(response, "", raw)
+    return {"message": "Account verified for the next 10 minutes."}
+
+
+@router.post("/2fa/recovery-codes/regenerate")
+def regenerate_codes(req: TOTPEnableRequest, request: Request,
+                     user: User = Depends(require_recent_auth), db: Session = Depends(get_db)):
+    guard_auth(db, request, "MFA_SETTINGS", str(user.id), 10)
+    return {"recovery_codes": AuthService.regenerate_recovery_codes(db, user, req.code)}

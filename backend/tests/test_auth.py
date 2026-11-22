@@ -5,7 +5,7 @@ import cbor2
 from types import SimpleNamespace
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives import hashes
-from fastapi.testclient import TestClient
+from conftest import BrowserTestClient as TestClient
 from webauthn.helpers import bytes_to_base64url
 from app.main import app
 from app.config import settings
@@ -303,7 +303,7 @@ def test_two_factor_auth_lifecycle():
     # 4. Verify 2FA challenge with TOTP
     verify_2fa_res = client.post(
         "/api/auth/2fa/verify",
-        json={"ticket": ticket, "code": totp.now()}
+        json={"ticket": ticket, "code": totp.at((int(__import__("time").time()) // 30 + 1) * 30)}
     )
     assert verify_2fa_res.status_code == 200
     assert verify_2fa_res.json()["access_token"]
@@ -438,6 +438,8 @@ def test_passkey_login_verifies_signed_assertion():
 
 def test_passkey_login_uses_its_own_challenge_and_cannot_replay(monkeypatch):
     WEBAUTHN_CHALLENGES.clear()
+
+
     registered = client.post("/api/auth/register", json={
         "username": "passkey_login_user", "email": "passkey_login@example.com",
         "password": "password123", "confirm_password": "password123"
@@ -481,6 +483,43 @@ def test_passkey_login_uses_its_own_challenge_and_cannot_replay(monkeypatch):
         "challenge_id": registration_key, "response": assertion
     })
     assert wrong_purpose.status_code == 400
+    WEBAUTHN_CHALLENGES.clear()
+
+
+def test_staff_passkey_requires_staff_account_and_verified_challenge(monkeypatch):
+    WEBAUTHN_CHALLENGES.clear()
+    registered = client.post('/api/auth/register', json={
+        'username': 'staff_passkey_user', 'email': 'staff_passkey@example.com',
+        'password': 'password123', 'confirm_password': 'password123'
+    })
+    assert registered.status_code == 201
+    assert client.post('/api/auth/passkeys/login/options?staff_only=true').status_code == 400
+    with TestingSessionLocal() as db:
+        user = db.query(User).filter_by(username='staff_passkey_user').one()
+        db.add(Passkey(user_id=user.id, credential_id='staff_credential',
+                       public_key='AQ', sign_count=0, name='Staff key'))
+        db.commit()
+    assert client.post('/api/auth/passkeys/login/options?identifier=staff_passkey_user&staff_only=true').status_code == 400
+    with TestingSessionLocal() as db:
+        user = db.query(User).filter_by(username='staff_passkey_user').one()
+        user.role = 'MODERATOR'
+        user.totp_enabled = True
+        db.commit()
+    options = client.post('/api/auth/passkeys/login/options?identifier=staff_passkey_user&staff_only=true')
+    assert options.status_code == 200, options.text
+    assert options.json()['userVerification'] == 'required'
+    monkeypatch.setattr('app.services.auth_service.webauthn.verify_authentication_response',
+                        lambda **kwargs: SimpleNamespace(new_sign_count=1))
+    result = client.post('/api/auth/passkeys/login/verify', json={
+        'challenge_id': options.json()['challenge_id'],
+        'response': {'id': 'staff_credential', 'response': {}}
+    })
+    assert result.status_code == 200, result.text
+    assert client.get('/api/staff/me', headers={'Authorization': f"Bearer {result.json()['access_token']}"}).status_code == 200
+    assert client.post('/api/auth/passkeys/login/verify', json={
+        'challenge_id': options.json()['challenge_id'],
+        'response': {'id': 'staff_credential', 'response': {}}
+    }).status_code == 400
     WEBAUTHN_CHALLENGES.clear()
 
 

@@ -1,4 +1,5 @@
 import io
+import hmac
 import os
 import json
 import base64
@@ -23,6 +24,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_, desc
 
 from app.config import settings
+from app.models.security_event import record_security_event
 from app.models.user import User
 from app.models.session import UserSession
 from app.models.otp import OTPVerification
@@ -89,30 +91,21 @@ class AuthService:
         """Set access and refresh tokens in HttpOnly, SameSite cookies."""
         if not response:
             return
+        from app.security.browser_session import cookie_name
         response.set_cookie(
-            key="access_token",
-            value=access_token,
-            httponly=True,
-            max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-            samesite=settings.COOKIE_SAMESITE,
-            secure=settings.COOKIE_SECURE,
-            path="/"
-        )
-        response.set_cookie(
-            key="refresh_token",
-            value=refresh_token,
-            httponly=True,
+            key=cookie_name(), value=refresh_token, httponly=True,
             max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
-            samesite=settings.COOKIE_SAMESITE,
-            secure=settings.COOKIE_SECURE,
-            path="/"
-        )
+            samesite=settings.COOKIE_SAMESITE, secure=settings.COOKIE_SECURE, path="/")
+        response.delete_cookie("access_token", path="/")
+        response.delete_cookie("refresh_token", path="/")
 
     @staticmethod
     def clear_auth_cookies(response: Response) -> None:
         """Remove auth cookies upon logout or session revocation."""
         if not response:
             return
+        from app.security.browser_session import cookie_name
+        response.delete_cookie(key=cookie_name(), path="/", secure=settings.COOKIE_SECURE, httponly=True, samesite=settings.COOKIE_SAMESITE)
         response.delete_cookie(key="access_token", path="/")
         response.delete_cookie(key="refresh_token", path="/")
 
@@ -150,6 +143,10 @@ class AuthService:
             session.staff_verified_until = now + timedelta(minutes=30)
             db.add(ModeratorAuditLog(actor_id=user.id, action="STAFF_LOGIN", target_type="session",
                                      target_id=None, result="SUCCESS", reason="MFA verified"))
+        record_security_event(db, user.id, "LOGIN", "A new sign-in session was created.")
+        known_context = db.query(UserSession.id).filter_by(user_id=user.id, user_agent=user_agent).first()
+        if not known_context:
+            record_security_event(db, user.id, "NEW_CONTEXT", "Sign-in from an unfamiliar browser context. User-agent information is not a device identity.")
         db.add(session)
         user.last_seen = now
         db.commit()
@@ -420,6 +417,9 @@ class AuthService:
         ).first()
 
         if not user or not user.password_hash or not verify_password(req.password or "", user.password_hash):
+            if user:
+                record_security_event(db, user.id, "LOGIN_FAILED", "A password sign-in attempt failed.")
+                db.commit()
             if user and user.role in {"MODERATOR", "OWNER"}:
                 db.add(ModeratorAuditLog(actor_id=user.id, action="STAFF_LOGIN", target_type="user",
                                          target_id=user.id, result="FAILED", reason="Invalid credentials"))
@@ -496,7 +496,10 @@ class AuthService:
         now = datetime.now(timezone.utc)
         if not user.totp_enabled or not challenge or challenge.used or challenge.attempts >= 5 or challenge.expires_at.replace(tzinfo=timezone.utc) < now:
             raise HTTPException(status_code=401, detail="Invalid or expired 2FA session ticket.")
-        challenge.attempts += 1
+        updated = db.query(AuthChallenge).filter(AuthChallenge.id == challenge.id, AuthChallenge.used == False,
+            AuthChallenge.attempts < 5).update({"attempts": AuthChallenge.attempts + 1}, synchronize_session="fetch")
+        if updated != 1:
+            raise HTTPException(401, "Invalid or expired 2FA session ticket.")
 
         code_input = req.code.strip()
         verified = False
@@ -504,8 +507,14 @@ class AuthService:
         # 1. Try TOTP code
         if user.totp_secret and len(code_input) == 6 and code_input.isdigit():
             totp = pyotp.TOTP(user.totp_secret)
-            if totp.verify(code_input, valid_window=1):
-                verified = True
+            step = int(now.timestamp()) // 30
+            accepted_step = next((candidate for candidate in range(step - 1, step + 2)
+                                  if hmac.compare_digest(totp.at(candidate * 30), code_input)), None)
+            if accepted_step is not None:
+                claimed = db.query(User).filter(User.id == user.id,
+                    or_(User.staff_recovery_totp_step.is_(None), User.staff_recovery_totp_step < accepted_step)).update(
+                        {"staff_recovery_totp_step": accepted_step}, synchronize_session="fetch")
+                verified = claimed == 1
 
         # 2. Try Recovery Code if not verified by TOTP
         if not verified:
@@ -517,12 +526,11 @@ class AuthService:
             ).first()
 
             if recovery_entry:
-                recovery_entry.used = True
-                recovery_entry.used_at = datetime.now(timezone.utc)
-                db.commit()
-                verified = True
+                verified = db.query(RecoveryCode).filter(RecoveryCode.id == recovery_entry.id, RecoveryCode.used == False).update(
+                    {"used": True, "used_at": now}, synchronize_session="fetch") == 1
 
         if not verified:
+            record_security_event(db, user.id, "MFA_FAILED", "An authenticator verification attempt failed.")
             if challenge.attempts >= 5:
                 challenge.used = True
             db.commit()
@@ -531,8 +539,11 @@ class AuthService:
                 detail="Invalid authenticator code or recovery code."
             )
 
-        # Successful 2FA: Create session and issue tokens
-        challenge.used = True
+        # Claim the challenge atomically along with the factor watermark.
+        claimed = db.query(AuthChallenge).filter_by(id=challenge.id, used=False).update({"used": True}, synchronize_session="fetch")
+        if claimed != 1:
+            db.rollback()
+            raise HTTPException(401, "Invalid or expired 2FA session ticket.")
         db.commit()
         session, access_token, refresh_token = AuthService.create_user_session(db, user, request, response, staff_verified=True)
 
@@ -556,7 +567,8 @@ class AuthService:
         response: Optional[Response] = None
     ) -> Dict[str, Any]:
         """Rotate long-lived refresh token and issue new short-lived access token."""
-        token_str = refresh_token_input or request.cookies.get("refresh_token")
+        from app.security.browser_session import cookie_name, valid_session
+        token_str = refresh_token_input or request.cookies.get(cookie_name()) or request.cookies.get("refresh_token")
         if not token_str:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -569,7 +581,7 @@ class AuthService:
             UserSession.refresh_token_hash == token_hash
         ).first()
 
-        if not session or session.revoked:
+        if not valid_session(session):
             if response:
                 AuthService.clear_auth_cookies(response)
             raise HTTPException(
@@ -602,7 +614,8 @@ class AuthService:
         new_refresh_token = create_refresh_token()
         session.refresh_token_hash = hash_token(new_refresh_token)
         session.last_active = now
-        session.expires_at = now + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+        session.expires_at = min(now + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+            session.created_at.replace(tzinfo=timezone.utc) + timedelta(hours=settings.SESSION_ABSOLUTE_HOURS))
         db.commit()
 
         new_access_token = create_access_token(
@@ -637,7 +650,8 @@ class AuthService:
             UserSession.expires_at > now
         ).order_by(desc(UserSession.last_active)).all()
 
-        return [s.to_dict(current_session_id=current_session_id) for s in sessions]
+        from app.security.browser_session import valid_session
+        return [s.to_dict(current_session_id=current_session_id) for s in sessions if valid_session(s)]
 
     @staticmethod
     def revoke_session(
@@ -658,6 +672,7 @@ class AuthService:
 
         session.revoked = True
         session.revoked_at = datetime.now(timezone.utc)
+        record_security_event(db, user_id, "SESSION_REVOKED", "A sign-in session was revoked.")
         db.commit()
 
         if current_session_id and session_id == current_session_id and response:
@@ -678,6 +693,7 @@ class AuthService:
         if current_session_id:
             query = query.filter(UserSession.session_id != current_session_id)
 
+        record_security_event(db, user_id, "OTHER_SESSIONS_REVOKED", "Other sign-in sessions were revoked.")
         count = query.update({"revoked": True, "revoked_at": now})
         db.commit()
         return count
@@ -719,6 +735,8 @@ class AuthService:
     @staticmethod
     def enable_totp(db: Session, user: User, code: str) -> List[str]:
         """Verify code from authenticator app, enable 2FA, and generate backup recovery codes."""
+        if user.totp_enabled:
+            raise HTTPException(409, "Authenticator is already enabled.")
         stored = WEBAUTHN_CHALLENGES.get(f"totp_setup_{user.id}")
         if not stored or (datetime.now(timezone.utc) - stored["created_at"]).total_seconds() > 600:
             WEBAUTHN_CHALLENGES.pop(f"totp_setup_{user.id}", None)
@@ -736,7 +754,11 @@ class AuthService:
             )
 
         user.totp_secret = secret
+        step = int(datetime.now(timezone.utc).timestamp()) // 30
+        user.staff_recovery_totp_step = next(candidate for candidate in range(step - 1, step + 2)
+            if hmac.compare_digest(totp.at(candidate * 30), code.strip()))
         user.totp_enabled = True
+        record_security_event(db, user.id, "MFA_ENABLED", "Authenticator verification enabled.")
 
         # Generate 8 single-use recovery codes
         db.query(RecoveryCode).filter(RecoveryCode.user_id == user.id).delete()
@@ -744,8 +766,8 @@ class AuthService:
         now = datetime.now(timezone.utc)
 
         for _ in range(8):
-            part1 = f"{secrets.randbelow(9000) + 1000}"
-            part2 = f"{secrets.randbelow(9000) + 1000}"
+            part1 = secrets.token_hex(5).upper()
+            part2 = secrets.token_hex(5).upper()
             plain_code = f"{part1}-{part2}"
             plain_codes.append(plain_code)
 
@@ -762,6 +784,34 @@ class AuthService:
         return plain_codes
 
     @staticmethod
+    def verify_account_factor(db: Session, user: User, code: str) -> bool:
+        now = datetime.now(timezone.utc)
+        if user.totp_secret and len(code.strip()) == 6 and code.strip().isdigit():
+            totp = pyotp.TOTP(user.totp_secret)
+            step = int(now.timestamp()) // 30
+            matched = next((value for value in range(step - 1, step + 2)
+                            if hmac.compare_digest(totp.at(value * 30), code.strip())), None)
+            if matched is not None:
+                return db.query(User).filter(User.id == user.id,
+                    or_(User.staff_recovery_totp_step.is_(None), User.staff_recovery_totp_step < matched)).update(
+                        {"staff_recovery_totp_step": matched}, synchronize_session="fetch") == 1
+        return db.query(RecoveryCode).filter(RecoveryCode.user_id == user.id,
+            RecoveryCode.code_hash == hash_token(code.strip().upper()), RecoveryCode.used == False).update(
+                {"used": True, "used_at": now}, synchronize_session="fetch") == 1
+
+    @staticmethod
+    def regenerate_recovery_codes(db: Session, user: User, code: str):
+        if not user.totp_enabled or not AuthService.verify_account_factor(db, user, code):
+            db.commit()
+            raise HTTPException(400, "A valid unused authenticator or recovery code is required.")
+        db.query(RecoveryCode).filter_by(user_id=user.id).delete()
+        codes = [secrets.token_hex(10).upper() for _ in range(8)]
+        db.add_all([RecoveryCode(user_id=user.id, code_hash=hash_token(value), used=False) for value in codes])
+        record_security_event(db, user.id, "RECOVERY_CODES", "Recovery codes replaced; previous codes no longer work.")
+        db.commit()
+        return codes
+
+    @staticmethod
     def disable_totp(
         db: Session,
         user: User,
@@ -771,13 +821,9 @@ class AuthService:
         """Disable 2FA after checking password or current TOTP code."""
         if user.role in {"MODERATOR", "OWNER"}:
             raise HTTPException(status_code=403, detail="Staff accounts must keep two-factor authentication enabled.")
-        verified = False
+        verified = AuthService.verify_account_factor(db, user, code or "") if code else False
         if password and user.password_hash and verify_password(password, user.password_hash):
             verified = True
-        elif code and user.totp_secret:
-            totp = pyotp.TOTP(user.totp_secret)
-            if totp.verify(code.strip(), valid_window=1):
-                verified = True
 
         if not verified:
             raise HTTPException(
@@ -786,6 +832,7 @@ class AuthService:
             )
 
         user.totp_enabled = False
+        record_security_event(db, user.id, "MFA_DISABLED", "Authenticator verification disabled.")
         user.totp_secret = None
         db.query(RecoveryCode).filter(RecoveryCode.user_id == user.id).delete()
         db.commit()
@@ -869,10 +916,15 @@ class AuthService:
         return passkey.to_dict()
 
     @staticmethod
-    def get_passkey_login_options(db: Session, identifier: Optional[str] = None) -> Dict[str, Any]:
+    def get_passkey_login_options(db: Session, identifier: Optional[str] = None,
+                                  staff_only: bool = False) -> Dict[str, Any]:
         """Generate WebAuthn authentication options for passkey login."""
         clean_expired_challenges()
         allowed_credentials = None
+        expected_user_id = None
+
+        if staff_only and not (identifier or '').strip():
+            raise HTTPException(status_code=400, detail="Enter your staff account before using a passkey.")
 
         if identifier:
             user = db.query(User).filter(
@@ -882,27 +934,32 @@ class AuthService:
                     User.phone_number == identifier.strip()
                 )
             ).first()
-            if user:
-                user_passkeys = db.query(Passkey).filter(Passkey.user_id == user.id).all()
-                if user_passkeys:
-                    allowed_credentials = [
-                        PublicKeyCredentialDescriptor(
-                            id=base64url_to_bytes(p.credential_id),
-                            type=PublicKeyCredentialType.PUBLIC_KEY
-                        )
-                        for p in user_passkeys
-                    ]
+            if not user or (staff_only and (user.role not in {"MODERATOR", "OWNER"} or not user.totp_enabled)):
+                raise HTTPException(status_code=400, detail="No passkey is available for this account. Sign in with your password first.")
+            user_passkeys = db.query(Passkey).filter(Passkey.user_id == user.id).all()
+            if not user_passkeys:
+                raise HTTPException(status_code=400, detail="No passkey is available for this account. Sign in with your password first.")
+            expected_user_id = user.id
+            allowed_credentials = [
+                PublicKeyCredentialDescriptor(
+                    id=base64url_to_bytes(p.credential_id),
+                    type=PublicKeyCredentialType.PUBLIC_KEY
+                )
+                for p in user_passkeys
+            ]
 
         opts = webauthn.generate_authentication_options(
             rp_id=settings.RP_ID,
             allow_credentials=allowed_credentials,
-            user_verification=UserVerificationRequirement.PREFERRED
+            user_verification=UserVerificationRequirement.REQUIRED if staff_only else UserVerificationRequirement.PREFERRED
         )
 
         challenge_id = bytes_to_base64url(opts.challenge)
         WEBAUTHN_CHALLENGES[challenge_id] = {
             "challenge": opts.challenge,
             "purpose": "passkey_login",
+            "staff_only": staff_only,
+            "user_id": expected_user_id,
             "created_at": datetime.now(timezone.utc)
         }
 
@@ -935,6 +992,11 @@ class AuthService:
         challenge_entry = WEBAUTHN_CHALLENGES.get(challenge_id)
         if not challenge_entry or challenge_entry.get("purpose") != "passkey_login":
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Authentication challenge expired.")
+        if challenge_entry.get("user_id") is not None and challenge_entry["user_id"] != user.id:
+            raise HTTPException(status_code=401, detail="Passkey does not match this account.")
+        staff_only = bool(challenge_entry.get("staff_only"))
+        if staff_only and (user.role not in {"MODERATOR", "OWNER"} or not user.totp_enabled):
+            raise HTTPException(status_code=403, detail="Staff passkey access is unavailable.")
 
         allowed_origins = [settings.RP_ORIGIN] + settings.ALLOWED_ORIGINS
         try:
@@ -958,7 +1020,7 @@ class AuthService:
         db.commit()
         WEBAUTHN_CHALLENGES.pop(challenge_id, None)
 
-        session, access_token, refresh_token = AuthService.create_user_session(db, user, request, response, staff_verified=True)
+        session, access_token, refresh_token = AuthService.create_user_session(db, user, request, response, staff_verified=staff_only)
 
         return {
             "access_token": access_token if demo_codes_enabled() else None,
@@ -1003,6 +1065,7 @@ class AuthService:
 
         validate_password(req.new_password)
         user.password_hash = hash_password(req.new_password)
+        record_security_event(db, user.id, "PASSWORD_CHANGED", "Account password changed.")
         user.updated_at = datetime.now(timezone.utc)
         db.commit()
 
@@ -1010,7 +1073,7 @@ class AuthService:
     def create_reset_code(db: Session, email: str) -> str:
         clean_email = validate_email(email)
         user = db.query(User).filter(User.email == clean_email).first()
-        if not user:
+        if not user or user.role in {"MODERATOR", "OWNER"}:
             return ""
 
         code = f"{secrets.randbelow(900000) + 100000}"
@@ -1047,9 +1110,13 @@ class AuthService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found."
             )
+        if user.role in {"MODERATOR", "OWNER"}:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail="Invalid or expired reset code.")
 
         validate_password(req.new_password)
         user.password_hash = hash_password(req.new_password)
+        record_security_event(db, user.id, "PASSWORD_CHANGED", "Account password changed.")
         user.updated_at = datetime.now(timezone.utc)
         db.query(UserSession).filter_by(user_id=user.id, revoked=False).update({
             "revoked": True, "revoked_at": datetime.now(timezone.utc)

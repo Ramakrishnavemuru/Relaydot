@@ -1,6 +1,7 @@
 """Social and community records. Existing chat tables remain the source for chat."""
 from datetime import datetime, timezone
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from uuid import uuid4
+from sqlalchemy import Boolean, CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -43,7 +44,10 @@ class CommunityMember(Base):
 class Post(Base):
     __tablename__ = "posts"
     id = Column(Integer, primary_key=True)
+    public_id = Column(String(32), nullable=False, unique=True, index=True, default=lambda: uuid4().hex)
     author_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    client_id = Column(String(36))
+    request_fingerprint = Column(String(64))
     community_id = Column(Integer, ForeignKey("communities.id", ondelete="CASCADE"), index=True)
     content = Column(Text, default="", nullable=False)
     media_url = Column(String(500))
@@ -54,6 +58,7 @@ class Post(Base):
     quote_of_id = Column(Integer, ForeignKey("posts.id", ondelete="SET NULL"), index=True)
     thread_parent_id = Column(Integer, ForeignKey("posts.id", ondelete="SET NULL"), index=True)
     pinned = Column(Boolean, default=False, nullable=False)
+    profile_pinned_at = Column(DateTime)
     created_at = Column(DateTime, default=now, nullable=False, index=True)
     updated_at = Column(DateTime, default=now, onupdate=now, nullable=False)
     edited_at = Column(DateTime)
@@ -63,7 +68,27 @@ class Post(Base):
     repost_of = relationship("Post", remote_side=[id], foreign_keys=[repost_of_id])
     quote_of = relationship("Post", remote_side=[id], foreign_keys=[quote_of_id])
     __table_args__ = (Index("ix_posts_visible_recent", "deleted_at", "created_at"),
+                      Index("ix_posts_author_profile_pin", "author_id", "profile_pinned_at"),
+                      UniqueConstraint("author_id", "client_id", name="uq_posts_author_client_id"),
                       UniqueConstraint("author_id", "repost_of_id"))
+
+
+class PostCollaborator(Base):
+    __tablename__ = "post_collaborators"
+    id = Column(Integer, primary_key=True)
+    post_id = Column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    invited_by = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    status = Column(String(12), nullable=False, default="PENDING")
+    invited_at = Column(DateTime, default=now, nullable=False)
+    responded_at = Column(DateTime)
+    user = relationship("User", foreign_keys=[user_id])
+    post = relationship("Post", foreign_keys=[post_id])
+    __table_args__ = (
+        UniqueConstraint("post_id", "user_id", name="uq_post_collaborators_post_user"),
+        CheckConstraint("status IN ('PENDING', 'ACCEPTED', 'DECLINED', 'REVOKED')", name="ck_post_collaborators_status"),
+        Index("ix_post_collaborators_user_status", "user_id", "status"),
+    )
 
 
 class PostReaction(Base):

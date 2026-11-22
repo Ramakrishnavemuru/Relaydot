@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.models.user import User
 from app.models.block import BlockedUser
 from app.models.social import (Bookmark, Comment, CommunityMember, Follow, PollOption,
-    PollVote, Post, PostReaction)
+    PollVote, Post, PostCollaborator, PostReaction)
 
 
 class FeedService:
@@ -29,12 +29,15 @@ class FeedService:
         following = FeedService.following_ids(db, viewer_id)
         mutual = {row[0] for row in db.query(Follow.follower_id).filter(
             Follow.following_id == viewer_id, Follow.follower_id.in_(following))} if following else set()
-        allowed = or_(Post.visibility == "EVERYONE", Post.author_id == viewer_id,
+        accepted = db.query(PostCollaborator.post_id).filter_by(user_id=viewer_id, status="ACCEPTED")
+        private_followed = Post.author_id.in_(following or [-1])
+        allowed = or_(Post.visibility == "EVERYONE", Post.author_id == viewer_id, Post.id.in_(accepted),
             and_(Post.visibility == "FOLLOWERS", Post.author_id.in_(following or [-1])),
             and_(Post.visibility == "FRIENDS", Post.author_id.in_(mutual or [-1])))
         return db.query(Post).options(joinedload(Post.author), joinedload(Post.community)).filter(
             Post.deleted_at.is_(None), allowed,
-            or_(Post.author_id == viewer_id, Post.author.has(User.is_private.is_(False))),
+            or_(Post.author_id == viewer_id, Post.id.in_(accepted), private_followed,
+                Post.author.has(User.is_private.is_(False))),
             ~Post.author_id.in_(FeedService.blocked_ids(db, viewer_id) or [-1]))
 
     @staticmethod
@@ -52,7 +55,8 @@ class FeedService:
         q = FeedService.visible_query(db, viewer_id)
         if mode == "following":
             ids = FeedService.following_ids(db, viewer_id) | {viewer_id}
-            return q.filter(Post.author_id.in_(ids)).order_by(Post.created_at.desc(), Post.id.desc()).offset(offset).limit(limit).all()
+            collab_posts = db.query(PostCollaborator.post_id).filter(PostCollaborator.user_id.in_(ids), PostCollaborator.status == "ACCEPTED")
+            return q.filter(or_(Post.author_id.in_(ids), Post.id.in_(collab_posts))).order_by(Post.created_at.desc(), Post.id.desc()).offset(offset).limit(limit).all()
         # A bounded recent candidate set keeps old viral posts from dominating and makes ranking stable.
         now = datetime.now(timezone.utc)
         candidates = q.filter(Post.created_at >= now - timedelta(days=14)).order_by(
@@ -89,10 +93,17 @@ class FeedService:
             PollVote.post_id.in_(ids), PollVote.user_id == viewer_id)}
         vote_counts = dict(db.query(PollVote.option_id, func.count(PollVote.id)).filter(
             PollVote.post_id.in_(ids)).group_by(PollVote.option_id).all())
+        collaborators: dict[int, list[PostCollaborator]] = {}
+        for row in db.query(PostCollaborator).options(joinedload(PostCollaborator.user)).filter(
+            PostCollaborator.post_id.in_(ids), PostCollaborator.status == "ACCEPTED"):
+            collaborators.setdefault(row.post_id, []).append(row)
+        following = FeedService.following_ids(db, viewer_id)
+        author_by_post = {p.id: p.author_id for p in posts}
         stats = {pid:{"likes":likes.get(pid,0), "comments":comments.get(pid,0),
             "reposts":reposts.get(pid,0), "reaction":reactions.get(pid),
-            "bookmarked":pid in bookmarks, "options":options.get(pid,[]),
-            "vote":votes.get(pid), "vote_counts":vote_counts} for pid in ids}
+            "bookmarked":pid in bookmarks, "options":options.get(pid,[]), "collaborators":collaborators.get(pid, []),
+            "vote":votes.get(pid), "vote_counts":vote_counts,
+            "following": author_by_post[pid] in following} for pid in ids}
         return [FeedService.serialize(db, p, viewer_id, stats=stats) for p in posts]
 
     @staticmethod
@@ -114,14 +125,20 @@ class FeedService:
             if original and FeedService.can_view(db, original, viewer_id):
                 related = FeedService.serialize(db, original, viewer_id, nested=True)
         show_results = bool(vote) or post.author_id == viewer_id
+        collaborators = s["collaborators"] if s else db.query(PostCollaborator).options(joinedload(PostCollaborator.user)).filter_by(post_id=post.id, status="ACCEPTED").all()
+        author_data = author.to_dict(False)
+        author_data["is_following"] = s["following"] if s else db.query(Follow.id).filter_by(
+            follower_id=viewer_id, following_id=post.author_id).first() is not None
         return {
-            "id": post.id, "author": author.to_dict(False), "author_id": post.author_id,
+            "id": post.id, "public_id": post.public_id, "author": author_data, "author_id": post.author_id,
+            "collaborators": [row.user.to_dict(False) for row in collaborators if row.user],
             "content": post.content, "media_url": post.media_url, "media_type": post.media_type,
             "visibility": post.visibility, "reply_policy": post.reply_policy,
             "community_id": post.community_id, "community_name": post.community.name if post.community else None,
             "created_at": FeedService.iso(post.created_at), "edited_at": FeedService.iso(post.edited_at) if post.edited_at else None,
             "repost_of_id": post.repost_of_id, "quote_of_id": post.quote_of_id,
             "thread_parent_id": post.thread_parent_id, "pinned": post.pinned,
+            "profile_pinned_at": FeedService.iso(post.profile_pinned_at) if post.profile_pinned_at else None,
             "original": related, "likes_count": likes, "comments_count": comments,
             "reposts_count": reposts, "my_reaction": (reaction if s else reaction.emoji) if reaction else None,
             "bookmarked": bookmarked, "poll": [{"id": o.id, "label": o.label,

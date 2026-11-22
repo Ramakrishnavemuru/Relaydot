@@ -55,6 +55,8 @@ class UserService:
     @staticmethod
     def update_privacy(db: Session, user: User, settings_data: PrivacySettingsUpdate) -> User:
         if settings_data.is_private is not None:
+            if settings_data.is_private and user.account_type == "CREATOR":
+                raise HTTPException(400, "Switch to a personal account before making your profile private")
             user.is_private = settings_data.is_private
         if settings_data.show_last_seen is not None:
             user.show_last_seen = settings_data.show_last_seen

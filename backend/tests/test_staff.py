@@ -1,4 +1,4 @@
-from fastapi.testclient import TestClient
+from conftest import BrowserTestClient as TestClient
 import pyotp
 
 from app.main import app

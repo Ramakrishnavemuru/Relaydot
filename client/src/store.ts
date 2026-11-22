@@ -1,11 +1,12 @@
 import { create } from 'zustand'
-import { api, clearTokens } from './api'
+import { api, ApiError, clearTokens, resetSessionCache } from './api'
 import type { User } from './types'
 import { loginWithPasskey } from './passkeys'
 
 type AuthState = {
   user: User | null
   loading: boolean
+  bootError: string | null
   setUser: (user: User) => void
   boot: () => Promise<void>
   login: (identifier: string, password: string) => Promise<{ ticket?: string; demo_code?: string }>
@@ -15,11 +16,14 @@ type AuthState = {
   verifyRegistrationOtp: (identifier: string, code: string) => Promise<void>
   verify2fa: (ticket: string, code: string) => Promise<void>
   otpLogin: (identifier: string, code: string) => Promise<{ ticket?: string; demo_code?: string }>
-  passkeyLogin: (identifier: string) => Promise<void>
+  passkeyLogin: (identifier: string, staffOnly?: boolean) => Promise<void>
   logout: () => Promise<void>
 }
 
 type LoginResponse = { access_token?: string; refresh_token?: string; user?: User; requires_2fa?: boolean; ticket?: string; requires_otp?: boolean; identifier?: string; demo_otp?: string; demo_code?: string }
+
+let bootFlight: Promise<void> | null = null
+let authVersion = 0
 
 const accept = (data: LoginResponse, set: (partial: Partial<AuthState>) => void) => {
   if (!data.user) throw new Error('Sign-in did not return an account.')
@@ -28,26 +32,33 @@ const accept = (data: LoginResponse, set: (partial: Partial<AuthState>) => void)
     localStorage.removeItem('chat_access_token')
     localStorage.removeItem('chat_refresh_token')
   } catch { /* Storage may be disabled. */ }
-  set({ user: data.user })
+  authVersion++
+  resetSessionCache()
+  set({ user: data.user, loading: false, bootError: null })
 }
 
 export const useAuth = create<AuthState>((set) => ({
   user: null,
   loading: true,
   setUser: user => set({ user }),
-  boot: async () => {
-    try {
-      localStorage.removeItem('chat_user_data')
-      localStorage.removeItem('chat_access_token')
-      localStorage.removeItem('chat_refresh_token')
-    } catch { /* Storage may be disabled; cookies remain authoritative. */ }
-    try {
-      let user: User
-      try { user = await api<User>('/auth/me') }
-      catch { await api('/auth/refresh', { method: 'POST', body: {} }); user = await api<User>('/auth/me') }
-      set({ user })
-    } catch { set({ user: null }) }
-    finally { set({ loading: false }) }
+  bootError: null,
+  boot: () => {
+    if (bootFlight) return bootFlight
+    const version = authVersion
+    set({ loading: true, bootError: null })
+    const flight = (async () => {
+      try {
+        const user = await api<User>('/auth/me')
+        if (version === authVersion) set({ user, bootError: null })
+      } catch (cause) {
+        if (version !== authVersion) return
+        if (cause instanceof ApiError && cause.status === 401) set({ user: null, bootError: null })
+        else set({ bootError: 'Could not restore your session. Check your connection and try again.' })
+      } finally { if (version === authVersion) set({ loading: false }) }
+    })()
+    bootFlight = flight
+    void flight.finally(() => { if (bootFlight === flight) bootFlight = null })
+    return flight
   },
   login: async (identifier, password) => {
     const data = await api<LoginResponse>('/auth/login', { method: 'POST', body: { username_or_email: identifier, password } })
@@ -83,10 +94,21 @@ export const useAuth = create<AuthState>((set) => ({
     accept(data, set)
     return {}
   },
-  passkeyLogin: async identifier => { accept(await loginWithPasskey(identifier), set) },
+  passkeyLogin: async (identifier, staffOnly = false) => { accept(await loginWithPasskey(identifier, staffOnly), set) },
   logout: async () => {
-    try { await api('/auth/logout', { method: 'POST' }) } catch { /* local sign-out still completes */ }
+    await api('/auth/logout', { method: 'POST' })
+    authVersion++
     clearTokens()
+    try { localStorage.setItem('relay-signout', String(Date.now())) } catch {}
     set({ user: null })
   },
 }))
+
+
+window.addEventListener('storage', event => {
+  if (event.key === 'relay-signout') {
+    authVersion++
+    clearTokens()
+    useAuth.setState({ user: null, loading: false, bootError: null })
+  }
+})

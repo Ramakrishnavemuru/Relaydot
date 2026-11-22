@@ -52,12 +52,12 @@ class TokenResponse(BaseModel):
 
 
 class TwoFactorVerifyRequest(BaseModel):
-    ticket: str
-    code: str  # 6-digit TOTP or recovery code
+    ticket: str = Field(min_length=1, max_length=4096)
+    code: str = Field(min_length=1, max_length=80)  # TOTP or recovery code
 
 
 class TOTPEnableRequest(BaseModel):
-    code: str
+    code: str = Field(min_length=1, max_length=80)
 
 
 class TOTPDisableRequest(BaseModel):

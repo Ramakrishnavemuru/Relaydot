@@ -21,18 +21,22 @@ class UserSession(Base):
     expires_at = Column(DateTime, nullable=False)
     revoked = Column(Boolean, default=False, nullable=False)
     revoked_at = Column(DateTime, nullable=True)
+    reauthenticated_at = Column(DateTime, nullable=True)
     staff_verified_until = Column(DateTime, nullable=True)
 
     # Relationship
     user = relationship("User", back_populates="sessions")
 
     def to_dict(self, current_session_id: str = None):
+        def iso(value):
+            return (value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value).isoformat() if value else None
         return {
             "session_id": self.session_id,
             "device_name": self.device_name or "Unknown Device",
             "ip_address": self.ip_address,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "last_active": self.last_active.isoformat() if self.last_active else None,
+            "created_at": iso(self.created_at),
+            "last_active": iso(self.last_active),
             "is_current": bool(current_session_id and self.session_id == current_session_id),
+            "expires_at": iso(self.expires_at),
             "revoked": self.revoked
         }

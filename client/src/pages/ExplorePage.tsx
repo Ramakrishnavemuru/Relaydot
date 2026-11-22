@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { ArrowUpRight, Compass, Hash, MessageCircle, PlaySquare, Search, Users } from 'lucide-react'
 import { api, query } from '../api'
 import { Avatar, ErrorBox, Shell } from '../components'
@@ -20,7 +20,9 @@ function TrendingTopics({ topics, compact = false }: { topics: TrendingTopic[]; 
 }
 
 export function ExplorePage() {
-  const [input, setInput] = useState('')
+  const [params] = useSearchParams()
+  const [input, setInput] = useState(params.get('q') || '')
+  useEffect(() => setInput(params.get('q') || ''), [params])
   const term = input.trim()
   const results = useQuery({ queryKey: ['search', term], queryFn: () => api<SearchResult>(query('/social/search', { q: term, limit: 15 })), enabled: !!term })
   const trending = useQuery({ queryKey: ['trending'], queryFn: () => api<TrendingTopic[]>('/social/trending') })

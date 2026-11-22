@@ -1,4 +1,4 @@
-from fastapi.testclient import TestClient
+from conftest import BrowserTestClient as TestClient
 from app.main import app, client_dist
 import re
 

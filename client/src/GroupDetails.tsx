@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, query } from './api'
-import { Avatar, ErrorBox } from './components'
+import { Avatar, ErrorBox, GlassDialog } from './components'
 import { useAuth } from './store'
 import type { Conversation, User } from './types'
 
@@ -22,5 +22,48 @@ export function GroupDetails({ conversation, close, left }: { conversation: Conv
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not update group.'); return false }
     finally { setPending(false) }
   }
-  return <div className="dialog-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) close() }}><div className="dialog-card" role="dialog" aria-modal="true" aria-label="Group details"><header><h2>{group.data?.name || conversation.name}</h2><button className="icon-button" onClick={close}>Close</button></header>{group.error && <ErrorBox error={group.error} />}{group.data && <div className="group-details"><p>{group.data.description}</p><h3>Members</h3>{group.data.members?.map(member => <div className="session-row" key={member.user_id}><span><Avatar user={member.user} size="sm" /> {member.user?.display_name || member.user?.username || `User ${member.user_id}`} · {member.role}</span>{admin && member.user_id !== me?.id && <button className="text-button" disabled={pending} onClick={() => { if (confirm('Remove this member?')) void run(() => api(`/groups/${conversation.id}/members/${member.user_id}`, { method: 'DELETE' })) }}>Remove</button>}</div>)}{admin && <><form className="profile-edit-form" onSubmit={(event: FormEvent) => { event.preventDefault(); void run(() => api(`/groups/${conversation.id}`, { method: 'PUT', body: { name, description } })) }}><label>Group name<input value={name} onChange={event => setName(event.target.value)} required /></label><label>Description<textarea value={description} onChange={event => setDescription(event.target.value)} /></label><button className="button secondary" disabled={pending}>Save group details</button></form><label className="group-member-search">Add member<input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search people" /></label>{users.data?.filter(person => !group.data?.members?.some(member => member.user_id === person.id)).map(person => <button className="person-row" key={person.id} disabled={pending} onClick={() => void run(() => api(`/groups/${conversation.id}/members`, { method: 'POST', body: { user_id: person.id } }))}><Avatar user={person} />{person.display_name || person.username}</button>)}</>}<button className="button secondary" disabled={pending} onClick={() => { if (confirm('Leave this group?')) void run(() => api(`/groups/${conversation.id}/leave`, { method: 'POST' })).then(success => { if (success) { close(); left() } }) }}>Leave group</button>{error && <p className="form-error">{error}</p>}</div>}</div></div>
+  return <GlassDialog title={group.data?.name || conversation.name || 'Group details'} onClose={close}>
+    {group.isPending && <div className="loading-list" role="status">Loading group details…</div>}
+    {group.error && <ErrorBox error={group.error} retry={() => void group.refetch()} />}
+    {group.data && <div className="group-details">
+      {group.data.description && <p className="muted">{group.data.description}</p>}
+      <section aria-label="Group members">
+        <h3>Members <span className="group-member-count">{group.data.members?.length || 0}</span></h3>
+        {group.data.members?.map(member => <div className="session-row" key={member.user_id}>
+          <Avatar user={member.user} size="sm" />
+          <div className="group-member-identity">
+            <strong>{member.user?.display_name || member.user?.username || `User ${member.user_id}`}</strong>
+            <small>{member.role === 'ADMIN' ? 'Admin' : 'Member'}</small>
+          </div>
+          {admin && member.user_id !== me?.id && <button className="text-button" disabled={pending} onClick={() => {
+            if (confirm('Remove this member?')) void run(() => api(`/groups/${conversation.id}/members/${member.user_id}`, { method: 'DELETE' }))
+          }}>Remove</button>}
+        </div>)}
+      </section>
+      {admin && <section aria-label="Manage group">
+        <h3>Manage group</h3>
+        <form className="profile-edit-form" onSubmit={(event: FormEvent) => {
+          event.preventDefault()
+          void run(() => api(`/groups/${conversation.id}`, { method: 'PUT', body: { name, description } }))
+        }}>
+          <label>Group name<input value={name} onChange={event => setName(event.target.value)} required /></label>
+          <label>Description<textarea value={description} onChange={event => setDescription(event.target.value)} /></label>
+          <button className="button secondary" disabled={pending}>Save group details</button>
+        </form>
+        <label className="group-member-search">Add member<input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search people" /></label>
+        {users.data?.filter(person => !group.data?.members?.some(member => member.user_id === person.id)).map(person =>
+          <button className="person-row" key={person.id} disabled={pending}
+            onClick={() => void run(() => api(`/groups/${conversation.id}/members`, { method: 'POST', body: { user_id: person.id } }))}>
+            <Avatar user={person} />{person.display_name || person.username}
+          </button>
+        )}
+      </section>}
+      {error && <p className="form-error" role="alert">{error}</p>}
+      <button className="button secondary" disabled={pending} onClick={() => {
+        if (confirm('Leave this group?')) void run(() => api(`/groups/${conversation.id}/leave`, { method: 'POST' })).then(success => {
+          if (success) { close(); left() }
+        })
+      }}>Leave group</button>
+    </div>}
+  </GlassDialog>
 }

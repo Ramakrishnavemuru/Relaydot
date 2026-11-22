@@ -8,9 +8,9 @@ const appearance = window.matchMedia('(prefers-color-scheme: dark)')
 function savedPreference(): ThemePreference {
   try {
     const value = localStorage.getItem(storageKey)
-    return value === 'light' || value === 'dark' ? value : 'system'
+    return value === 'light' || value === 'dark' || value === 'system' ? value : 'light'
   } catch {
-    return 'system'
+    return 'light'
   }
 }
 
@@ -19,7 +19,7 @@ function applyTheme(preference: ThemePreference) {
     ? (appearance.matches ? 'dark' : 'light')
     : preference
   document.documentElement.dataset.theme = theme
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'light' ? '#f7f8fa' : '#101318')
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'light' ? '#ffffff' : '#101626')
 }
 
 type ThemeState = {

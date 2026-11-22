@@ -1,25 +1,28 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <meta name="referrer" content="no-referrer" />
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#090b0f" />
-    <title>Relay</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
+    <meta name="theme-color" content="#ffffff" />
+    <title>Relaydot</title>
     <script>
       try {
         const preference = localStorage.getItem('relay-theme');
         document.documentElement.dataset.theme = preference === 'light' || preference === 'dark'
           ? preference
-          : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+          : preference === 'system' && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
       } catch {
-        document.documentElement.dataset.theme = 'dark';
+        document.documentElement.dataset.theme = 'light';
       }
       document.querySelector('meta[name="theme-color"]').content =
-        document.documentElement.dataset.theme === 'light' ? '#f7f8fa' : '#101318';
+        document.documentElement.dataset.theme === 'light' ? '#ffffff' : '#101626';
     </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><main class="startup-recovery"><h1>Opening Relaydot…</h1><p>If loading stops, <a href="">reload this page</a>.</p></main></div>
+    <noscript>Relaydot needs JavaScript. Enable it in your browser and reload.</noscript>
+    <script src="%BASE_URL%startup.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

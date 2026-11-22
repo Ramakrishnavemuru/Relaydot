@@ -255,8 +255,8 @@ class ConversationService:
 
         if not membership:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You are not a member of this conversation."
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Conversation not found."
             )
 
         conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
@@ -312,6 +312,7 @@ class ConversationService:
             unlocked = is_chat_unlocked(request, own)
             c_dict = {
                 "id": c.id,
+                "public_id": c.public_id,
                 "type": c.type,
                 "name": c.name,
                 "avatar_url": c.avatar_url,

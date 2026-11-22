@@ -1,11 +1,17 @@
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, Depends, Query, status, HTTPException, Request
+from fastapi import APIRouter, Depends, Query, status, HTTPException, Request, UploadFile, File
+from fastapi.responses import FileResponse
+from pathlib import Path
+from uuid import uuid4
+import mimetypes
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from app.database import get_db
 from app.models.user import User
 from app.models.message import Message, MessageBookmark, ScheduledMessage
+from app.models.attachment import Attachment
+from app.models.chat_upload import ChatUpload
 from app.models.conversation import Conversation, ConversationMember
 from app.schemas.message import (
     MessageCreate,
@@ -20,8 +26,95 @@ from app.services.user_service import UserService
 from app.services.rate_limit import throttle
 from app.services.chat_lock import require_chat_unlocked, is_chat_unlocked
 from app.services.settings_service import require_policy
+from app.config import settings
+from app.utils.validators import validate_file
 
 router = APIRouter(prefix="/messages", tags=["Messages"])
+CHAT_MEDIA_DIR = Path(settings.CHAT_MEDIA_DIR).resolve()
+try:
+    CHAT_MEDIA_DIR.relative_to(Path(settings.UPLOAD_DIR).resolve())
+except ValueError:
+    pass
+else:
+    raise RuntimeError("CHAT_MEDIA_DIR must be outside the public UPLOAD_DIR")
+
+
+@router.get("/conversations/{conversation_id}/security")
+def conversation_security(conversation_id: int, request: Request,
+                          current: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    require_chat_unlocked(request, db, current.id, conversation_id)
+    from app.services.communication_security import communication_security_status
+    return communication_security_status()
+
+
+@router.post("/uploads", status_code=201)
+async def upload_chat_attachment(file: UploadFile = File(...), current_user: User = Depends(get_current_user),
+                                 db: Session = Depends(get_db)):
+    throttle(current_user.id, "upload", 20)
+    name = Path(file.filename or "").name
+    if not name or name.lower().endswith(".svg"):
+        raise HTTPException(400, "Unsupported chat attachment")
+    validate_file(name, 0)
+    sample = await file.read(min(settings.MAX_FILE_SIZE_MB, 15) * 1024 * 1024 + 1)
+    validate_file(name, len(sample))
+    if not sample:
+        raise HTTPException(400, "Chat attachment is empty")
+    if len(sample) > 15 * 1024 * 1024:
+        raise HTTPException(413, "Chat attachment is too large")
+    extension = name.rsplit(".", 1)[-1].lower()
+    signatures = {"png": sample.startswith(b"\x89PNG\r\n\x1a\n"),
+        "jpg": sample.startswith(b"\xff\xd8\xff"), "jpeg": sample.startswith(b"\xff\xd8\xff"),
+        "gif": sample.startswith((b"GIF87a", b"GIF89a")),
+        "webp": sample.startswith(b"RIFF") and sample[8:12] == b"WEBP",
+        "mp4": sample[4:8] == b"ftyp", "pdf": sample.startswith(b"%PDF-")}
+    if extension in signatures and not signatures[extension]:
+        raise HTTPException(400, "File contents do not match its extension")
+    CHAT_MEDIA_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
+    stored_name = uuid4().hex
+    path = CHAT_MEDIA_DIR / stored_name
+    try:
+        path.write_bytes(sample)
+        path.chmod(0o600)
+        item = ChatUpload(uploader_id=current_user.id, file_name=name,
+                          file_type=mimetypes.guess_type(name)[0] or "application/octet-stream",
+                          file_size=len(sample), stored_name=stored_name)
+        db.add(item)
+        db.commit()
+        db.refresh(item)
+    except Exception:
+        path.unlink(missing_ok=True)
+        db.rollback()
+        raise
+    return {"file_url": f"/api/messages/attachments/{item.id}", "file_name": item.file_name,
+            "file_type": item.file_type, "file_size": item.file_size}
+
+
+@router.get("/attachments/{upload_id}")
+def download_chat_attachment(upload_id: str, request: Request,
+                             current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    item = db.get(ChatUpload, upload_id) if len(upload_id) == 32 else None
+    if not item:
+        raise HTTPException(404, "Attachment not found")
+    if item.claimed:
+        allowed = False
+        for attachment in db.query(Attachment).filter_by(public_id=upload_id):
+            try:
+                accessible_message(db, attachment.message_id, current_user.id, request)
+                allowed = True
+                break
+            except HTTPException as exc:
+                if exc.status_code == 423:
+                    raise
+        if not allowed:
+            raise HTTPException(404, "Attachment not found")
+    elif item.uploader_id != current_user.id:
+        raise HTTPException(404, "Attachment not found")
+    path = CHAT_MEDIA_DIR / item.stored_name
+    if not path.is_file():
+        raise HTTPException(404, "Attachment not found")
+    return FileResponse(path, media_type=item.file_type, filename=item.file_name,
+                        content_disposition_type="inline",
+                        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
 
 
 def accessible_message(db: Session, message_id: int, user_id: int, request: Request | None = None) -> Message:
@@ -77,7 +170,7 @@ def schedule_message(data: ScheduledMessageCreate, request: Request, current_use
         raise HTTPException(400, "Schedule time must be 5 seconds to one year from now")
     if not db.query(ConversationMember.id).filter_by(conversation_id=data.conversation_id,
         user_id=current_user.id).first():
-        raise HTTPException(403, "Not a conversation member")
+        raise HTTPException(404, "Conversation not found")
     require_chat_unlocked(request, db, current_user.id, data.conversation_id)
     conv = db.get(Conversation, data.conversation_id)
     if conv and conv.type == "DIRECT":
@@ -221,7 +314,7 @@ async def forward_message(message_id: int, data: ForwardMessageCreate, request: 
         conv = db.get(Conversation, conv_id)
         if not conv or not db.query(ConversationMember.id).filter_by(
             conversation_id=conv_id, user_id=current_user.id).first():
-            raise HTTPException(403, "Not a destination member")
+            raise HTTPException(404, "Conversation not found")
         if conv.type == "DIRECT":
             other = db.query(ConversationMember.user_id).filter(
                 ConversationMember.conversation_id == conv_id,
@@ -229,13 +322,14 @@ async def forward_message(message_id: int, data: ForwardMessageCreate, request: 
             if other and UserService.is_blocked(db, current_user.id, other[0]):
                 raise HTTPException(403, "Cannot forward to a blocked conversation")
     from app.schemas.message import AttachmentCreate
-    attachments = [AttachmentCreate(file_url=a.file_url, file_name=a.file_name,
+    attachments = [AttachmentCreate.model_construct(file_url=a.file_url, file_name=a.file_name,
         file_type=a.file_type, file_size=a.file_size, public_id=a.public_id) for a in source.attachments]
     result = []
     for conv_id in destinations:
         result.append(await MessageService.send_message(db, current_user.id,
             MessageCreate(conversation_id=conv_id, content=source.content,
-                message_type=source.message_type, attachments=attachments, is_forwarded=True)))
+                message_type=source.message_type, attachments=attachments, is_forwarded=True),
+            trusted_forward=True))
     return result
 
 

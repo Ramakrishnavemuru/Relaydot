@@ -1,7 +1,7 @@
 """New message controls must preserve membership and survive delivery/expiry ticks."""
 import asyncio
 from datetime import datetime, timedelta, timezone
-from fastapi.testclient import TestClient
+from conftest import BrowserTestClient as TestClient
 from app.main import app
 from app.models.message import Message, ScheduledMessage
 from app.services import scheduled_service
@@ -29,7 +29,7 @@ def test_threads_forwarding_bookmarks_pins_and_authorization():
     bad = client.post('/api/messages', headers=bh, json={'conversation_id':ab,'content':'Leak',
         'reply_to_id':other['id']})
     assert bad.status_code == 400
-    assert client.post('/api/messages/read', headers=ch, json={'conversation_id':ab}).status_code == 403
+    assert client.post('/api/messages/read', headers=ch, json={'conversation_id':ab}).status_code == 404
     assert client.get(f"/api/messages/{root['id']}/thread", headers=ch).status_code == 404
     reply = client.post('/api/messages', headers=bh, json={'conversation_id':ab,
         'content':'Thread reply', 'thread_root_id':root['id']})
@@ -125,6 +125,12 @@ def test_scheduled_delivery_and_disappearing_cleanup(monkeypatch):
     assert client.get('/api/messages/scheduled', headers=ah).json() == []
     expiring = client.post('/api/messages', headers=ah, json={'conversation_id':conversation,
         'content':'Temporary', 'expires_in_seconds':10}).json()
+    thirty_seconds = client.post('/api/messages', headers=ah, json={'conversation_id':conversation,
+        'content':'Temporary for 30 seconds', 'expires_in_seconds':30})
+    assert thirty_seconds.status_code == 201, thirty_seconds.text
+    expires = datetime.fromisoformat(thirty_seconds.json()['expires_at'])
+    created = datetime.fromisoformat(thirty_seconds.json()['created_at'])
+    assert timedelta(seconds=29) <= expires - created <= timedelta(seconds=31)
     with TestingSessionLocal() as db:
         db.get(Message, expiring['id']).expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
         db.commit()

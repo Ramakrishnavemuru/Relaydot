@@ -16,6 +16,8 @@ class PostCreate(BaseModel):
     quote_of_id: int | None = None
     thread_parent_id: int | None = None
     poll_options: list[str] | None = None
+    client_id: str | None = Field(default=None, pattern=r"^[0-9a-fA-F-]{36}$")
+    collaborator_ids: list[int] = Field(default_factory=list, max_length=20)
 
     @field_validator("poll_options")
     @classmethod

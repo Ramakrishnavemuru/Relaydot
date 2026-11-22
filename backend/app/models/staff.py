@@ -65,6 +65,17 @@ class StaffNotification(Base):
     created_at = Column(DateTime, default=now, nullable=False)
 
 
+class StaffPasswordReset(Base):
+    __tablename__ = "staff_password_resets"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_hash = Column(String(64), unique=True, nullable=False, index=True)
+    created_at = Column(DateTime, default=now, nullable=False)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    consumed_at = Column(DateTime)
+    attempts = Column(Integer, default=0, nullable=False)
+
+
 class ModeratorAuditLog(Base):
     __tablename__ = "moderator_audit_logs"
     id = Column(Integer, primary_key=True)
