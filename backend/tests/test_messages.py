@@ -1,5 +1,5 @@
 import pytest
-from fastapi.testclient import TestClient
+from conftest import BrowserTestClient as TestClient
 from app.main import app
 
 client = TestClient(app)
@@ -78,6 +78,20 @@ def test_messaging_flow():
     assert reaction_res.status_code == 200
     reactions = reaction_res.json()["reactions"]
     assert any(r["emoji"] == "👍" and r["user_id"] == uB_id for r in reactions)
+    replacement = client.post(
+        f"/api/messages/{msg1['id']}/reaction",
+        headers={"Authorization": f"Bearer {tokenB}"},
+        json={"emoji": "😂"}
+    )
+    assert replacement.status_code == 200
+    assert [r["emoji"] for r in replacement.json()["reactions"] if r["user_id"] == uB_id] == ["😂"]
+    removed = client.post(
+        f"/api/messages/{msg1['id']}/reaction",
+        headers={"Authorization": f"Bearer {tokenB}"},
+        json={"emoji": "😂"}
+    )
+    assert removed.status_code == 200
+    assert not [r for r in removed.json()["reactions"] if r["user_id"] == uB_id]
 
     # 5. Ram edits his message
     edit_res = client.put(

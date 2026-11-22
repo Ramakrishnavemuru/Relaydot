@@ -1,3 +1,12 @@
+FROM node:22-alpine AS client-build
+
+WORKDIR /client
+COPY client/package.json client/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY client/index.html client/tsconfig.json client/vite.config.ts ./
+COPY client/src ./src
+RUN npm run build
+
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -26,7 +35,7 @@ RUN pip install --no-cache-dir -r ./backend/requirements.txt
 # Copy application
 # --------------------------------------------------
 COPY backend ./backend
-COPY frontend ./frontend
+COPY --from=client-build /client/dist ./client/dist
 
 # --------------------------------------------------
 # Create required directories

@@ -46,6 +46,7 @@ class ConversationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    public_id: str
     type: str  # DIRECT or GROUP
     name: Optional[str] = None
     avatar_url: Optional[str] = None
@@ -57,3 +58,10 @@ class ConversationResponse(BaseModel):
     unread_count: int = 0
     last_message: Optional[dict] = None
     other_user: Optional[UserPublicResponse] = None  # Populated for DIRECT conversations
+    is_pinned: bool = False
+    is_archived: bool = False
+    is_favourite: bool = False
+    is_muted: bool = False
+    mute_calls: bool = False
+    is_locked: bool = False
+    is_unlocked: bool = True

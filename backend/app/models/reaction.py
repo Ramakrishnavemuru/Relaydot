@@ -14,7 +14,7 @@ class MessageReaction(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     __table_args__ = (
-        UniqueConstraint("message_id", "user_id", "emoji", name="uq_user_message_emoji"),
+        UniqueConstraint("message_id", "user_id", name="uq_user_message_reaction"),
     )
 
     # Relationships

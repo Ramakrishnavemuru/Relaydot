@@ -4,10 +4,16 @@ from app.routes.users import router as users_router
 from app.routes.conversations import router as conversations_router
 from app.routes.groups import router as groups_router
 from app.routes.messages import router as messages_router
+from app.routes.post_media import router as post_media_router
 from app.routes.search import router as search_router
 from app.routes.uploads import router as uploads_router
 from app.routes.calls import router as calls_router
 from app.routes.stories import router as stories_router
+from app.routes.social import router as social_router
+from app.routes.reels import router as reels_router
+from app.routes.settings import router as settings_router
+from app.routes.staff import router as staff_router
+from app.routes.creator import router as creator_router
 
 api_router = APIRouter(prefix="/api")
 
@@ -16,7 +22,13 @@ api_router.include_router(users_router)
 api_router.include_router(conversations_router)
 api_router.include_router(groups_router)
 api_router.include_router(messages_router)
+api_router.include_router(post_media_router)
 api_router.include_router(search_router)
 api_router.include_router(uploads_router)
 api_router.include_router(calls_router)
 api_router.include_router(stories_router)
+api_router.include_router(social_router)
+api_router.include_router(reels_router)
+api_router.include_router(settings_router)
+api_router.include_router(staff_router)
+api_router.include_router(creator_router)

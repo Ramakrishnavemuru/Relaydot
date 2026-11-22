@@ -1,0 +1,77 @@
+/* Shared white glass foundation with an explicit dark appearance. */
+:root, :root[data-theme="light"] {
+  color-scheme: light;
+  --radius-sm: 12px;
+  --radius: 24px;
+  --radius-lg: 28px;
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-heading: var(--font-body);
+  --font-data: ui-monospace, SFMono-Regular, Consolas, monospace;
+  --space-1: 8px;
+  --space-2: 16px;
+  --space-3: 24px;
+  --space-4: 32px;
+  --layout-gap: clamp(12px, 1.45vw, 22px);
+  --ease-glass: cubic-bezier(.2, .75, .25, 1);
+  --motion-fast: 150ms;
+  --motion-panel: 230ms;
+  --blur-ambient: 6px;
+  --blur-standard: 15px;
+  --blur-elevated: 23px;
+  --blur-focus: 30px;
+  --canvas: radial-gradient(ellipse at 13% 0%, var(--ambient-a), transparent 52%),
+    radial-gradient(ellipse at 96% 88%, var(--ambient-b), transparent 49%), var(--bg);
+
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f5f8ff;
+  --surface-3: #edf3ff;
+  --border: #e2eaf7;
+  --text: #101a33;
+  --muted: #536582;
+  --soft: #61708e;
+  --accent: #0755e8;
+  --accent-solid: #1668ff;
+  --accent-soft: #e5eeff;
+  --chat-bg: #fafcff;
+  --incoming: #f9fbfe;
+  --danger: #9e2943;
+  --danger-bg: #ffedf0;
+  --ambient-a: #eaf2ff;
+  --ambient-b: #f4f8ff;
+  --glass-edge: #dfe8f580;
+  --glass-sheen: #ffffffa0;
+  --scrim: #26365370;
+  --shadow: 0 10px 35px #1e468c12, 0 2px 8px #1e468c09;
+  --shadow-float: 0 16px 48px #233c6918, inset 0 1px #fff;
+  --shadow-focus: 0 24px 76px #233c6924, inset 0 1px #fff;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #101626;
+  --surface: #1b2539;
+  --surface-2: #222e45;
+  --surface-3: #2c3953;
+  --border: #3b4962;
+  --text: #f2f6ff;
+  --muted: #c1cbe0;
+  --soft: #a1afcb;
+  --accent: #a3c7ff;
+  --accent-solid: #365bc1;
+  --accent-soft: #293e67;
+  --chat-bg: #131c2d;
+  --incoming: #242f45;
+  --danger: #ffabb7;
+  --danger-bg: #482638;
+  --green: #25825e;
+  --on-accent: #fff;
+  --ambient-a: #293d70;
+  --ambient-b: #33284f;
+  --glass-edge: #c7d7ff35;
+  --glass-sheen: #d4e1ff12;
+  --scrim: #080e1dbc;
+  --shadow: 0 8px 24px #060b1a35;
+  --shadow-float: 0 16px 48px #060b1a63, inset 0 1px #dde9ff16;
+  --shadow-focus: 0 24px 76px #060b1a80, inset 0 1px #dde9ff25;
+}
